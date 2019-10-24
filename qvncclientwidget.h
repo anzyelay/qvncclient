@@ -22,7 +22,8 @@ public:
     void startFrameBufferUpdate()
     {
         connect(this, SIGNAL(frameBufferUpdated()), this, SLOT(sendFrameBufferUpdateRequest()));
-        sendFrameBufferUpdateRequest();
+        tryRefreshScreen();
+//        sendFrameBufferUpdateRequest();
     }
 
     void stopFrameBufferUpdate()
@@ -30,8 +31,10 @@ public:
         disconnect(this, SIGNAL(frameBufferUpdated()), this, SLOT(sendFrameBufferUpdateRequest()));
     }
 
+    sendSetEncodings();
+    bool sendSetPixelFormat(void);
 public slots:
-    void sendFrameBufferUpdateRequest();
+    void sendFrameBufferUpdateRequest(int incremental=1);
     //void send
 
 protected:
