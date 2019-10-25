@@ -31,10 +31,13 @@ public:
         disconnect(this, SIGNAL(frameBufferUpdated()), this, SLOT(sendFrameBufferUpdateRequest()));
     }
 
-    sendSetEncodings();
+    bool sendSetEncodings(void);
     bool sendSetPixelFormat(void);
 public slots:
     void sendFrameBufferUpdateRequest(int incremental=1);
+    void setFullScreen(bool full){
+        isScaled = full;
+    }
     //void send
 
 protected:
@@ -62,16 +65,17 @@ private:
 
     struct PixelFormat
     {
-        int bitsPerPixel;
-        int depth;
-        int bigEndianFlag;
-        int trueColorFlag;
-        int redMax;
-        int greenMax;
-        int blueMax;
-        int redShift;
-        int greenShift;
-        int blueShift;
+        quint8 bitsPerPixel;
+        quint8 depth;
+        quint8 bigEndianFlag;
+        quint8 trueColorFlag;
+        quint16 redMax;
+        quint16 greenMax;
+        quint16 blueMax;
+        quint8 redShift;
+        quint8 greenShift;
+        quint8 blueShift;
+        quint8 padding[3];
     } pixelFormat;
 
     quint16 qMakeU16(quint8 l, quint8 h)
@@ -104,6 +108,7 @@ private:
     }
 
     bool isFrameBufferUpdating;
+    bool isScaled;
 
     quint32 translateRfbKey(int key, bool modifier);
 

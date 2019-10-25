@@ -3,35 +3,36 @@
 QVNCClientWidget::QVNCClientWidget(QWidget *parent) : QWidget(parent)
 {
     isFrameBufferUpdating = true;
+    isScaled = true;
     setMouseTracking(true);
 }
 
 bool QVNCClientWidget::sendSetPixelFormat()
 {
-    unsigned char vncClientData[20];
+    unsigned char pixfmt[20];
 
-    vncClientData[0] = 0; //message type
-    vncClientData[1] = 0x00;
-    vncClientData[2] = 0x00;
-    vncClientData[3] = 0x00;
-    vncClientData[4] = this->pixelFormat.bitsPerPixel;
-    vncClientData[5] = this->pixelFormat.depth;
-    vncClientData[6] = this->pixelFormat.bigEndianFlag;
-    vncClientData[7] = this->pixelFormat.trueColorFlag;
-    vncClientData[8] = (this->pixelFormat.redMax>> 8) & 0xFF;
-    vncClientData[9] = (this->pixelFormat.redMax >> 0) & 0xFF;
-    vncClientData[10] = (this->pixelFormat.greenMax >> 8) & 0xFF;
-    vncClientData[11] = (this->pixelFormat.greenMax >> 0) & 0xFF;
-    vncClientData[12] = (this->pixelFormat.blueMax >> 8) & 0xFF;
-    vncClientData[13] = (this->pixelFormat.blueMax >> 0) & 0xFF;
-    vncClientData[14] = this->pixelFormat.redShift;
-    vncClientData[15] = this->pixelFormat.greenShift;
-    vncClientData[16] = this->pixelFormat.blueShift;
-    vncClientData[17] = 0x00;
-    vncClientData[18] = 0x00;
-    vncClientData[19] = 0x00;
+    pixfmt[0] = 0; //message type
+    pixfmt[1] = 0x00;
+    pixfmt[2] = 0x00;
+    pixfmt[3] = 0x00;
+    pixfmt[4] = this->pixelFormat.bitsPerPixel;
+    pixfmt[5] = this->pixelFormat.depth;
+    pixfmt[6] = this->pixelFormat.bigEndianFlag;
+    pixfmt[7] = this->pixelFormat.trueColorFlag;
+    pixfmt[8] = (this->pixelFormat.redMax>> 8) & 0xFF;
+    pixfmt[9] = (this->pixelFormat.redMax >> 0) & 0xFF;
+    pixfmt[10] = (this->pixelFormat.greenMax >> 8) & 0xFF;
+    pixfmt[11] = (this->pixelFormat.greenMax >> 0) & 0xFF;
+    pixfmt[12] = (this->pixelFormat.blueMax >> 8) & 0xFF;
+    pixfmt[13] = (this->pixelFormat.blueMax >> 0) & 0xFF;
+    pixfmt[14] = this->pixelFormat.redShift;
+    pixfmt[15] = this->pixelFormat.greenShift;
+    pixfmt[16] = this->pixelFormat.blueShift;
+    pixfmt[17] = 0x00;
+    pixfmt[18] = 0x00;
+    pixfmt[19] = 0x00;
 
-    if (socket.write((char *)vncClientData,20) != 20)
+    if (socket.write((char *)pixfmt,20) != 20)
     {
         qDebug("   fail to set pixel format");
         return false;
@@ -40,7 +41,7 @@ bool QVNCClientWidget::sendSetPixelFormat()
     return true;
 }
 
-QVNCClientWidget::sendSetEncodings()
+bool QVNCClientWidget::sendSetEncodings(void)
 {
     struct SET_ENCODING_STRUCT
     {
@@ -60,12 +61,19 @@ QVNCClientWidget::sendSetEncodings()
     enc.encoding[5] = qToBigEndian((qint32)5);//hextile
     enc.encoding[6] = qToBigEndian((qint32)2);//rre
     enc.encoding[7] = qToBigEndian((qint32)0);//raw
-    socket.flush();
-    socket.write((char *)&enc, 36);
+    if (socket.write((char *)&enc, 36) != 36)
+    {
+        qDebug("   fail to set encodings");
+        return false;
+    }
+
+    return true;
 }
 
 bool QVNCClientWidget::connectToVncServer(QString ip, QString password, int port)
 {
+    if(isConnectedToServer())
+        disconnectFromVncServer();
     socket.connectToHost(QHostAddress(ip), port);
     if(socket.waitForConnected())
     {
@@ -141,7 +149,6 @@ clientinit:
                     socket.write("\x01"); // ClientInit message (non-zeo: shared, zero:exclusive)
                     socket.waitForReadyRead();
                     response = socket.read(2); // framebuffer-width in pixels
-                    qDebug() << response;
                     frameBufferWidth = qMakeU16(response.at(0), response.at(1));
                     qDebug() << "Width: " << frameBufferWidth;
                     response = socket.read(2); // framebuffer-height in pixels
@@ -150,44 +157,26 @@ clientinit:
 
                     // Pixel Format
                     // ***************************
-                    response = socket.read(1);
-                    pixelFormat.bitsPerPixel = response.at(0); // Must be 8, 16 or 32
-                    qDebug() << "Bits per pixel: " << pixelFormat.bitsPerPixel;
-                    response = socket.read(1);
-                    pixelFormat.depth = response.at(0);
-                    qDebug() << "Depth: " << pixelFormat.depth;
-                    response = socket.read(1);
-                    pixelFormat.bigEndianFlag = response.at(0);
-                    qDebug() << "Big Endian: " << pixelFormat.bigEndianFlag;
-                    response = socket.read(1);
-                    pixelFormat.trueColorFlag = response.at(0);
-                    qDebug() << "True Color: " << pixelFormat.trueColorFlag;
-                    response = socket.read(2);
-                    pixelFormat.redMax = qMakeU16(response.at(0), response.at(1));
-                    qDebug() << "Red Max: " << pixelFormat.redMax;
-                    response = socket.read(2);
-                    pixelFormat.greenMax = qMakeU16(response.at(0), response.at(1));
-                    qDebug() << "Green Max: " << pixelFormat.greenMax;
-                    response = socket.read(2);
-                    pixelFormat.blueMax = qMakeU16(response.at(0), response.at(1));
-                    qDebug() << "Blue Max: " << pixelFormat.blueMax;
-                    response = socket.read(1);
-                    pixelFormat.redShift = response.at(0);
-                    qDebug() << "Red Shift: " << pixelFormat.redShift;
-                    response = socket.read(1);
-                    pixelFormat.greenShift = response.at(0);
-                    qDebug() << "Green Shift: " << pixelFormat.greenShift;
-                    response = socket.read(1);
-                    pixelFormat.blueShift = response.at(0);
-                    qDebug() << "Blue Shift: " << pixelFormat.blueShift;
-                    response = socket.read(3); // Padding
-                    // ***************************
+                    if(socket.read((char *)&pixelFormat, sizeof(pixelFormat)) != sizeof(pixelFormat))
+                        return false;
+                    pixelFormat.redMax = qFromBigEndian(pixelFormat.redMax);
+                    pixelFormat.greenMax = qFromBigEndian(pixelFormat.greenMax);
+                    pixelFormat.blueMax = qFromBigEndian(pixelFormat.blueMax);
 
                     response = socket.read(4); // name-length
 //                    response = socket.read(qMakeU32(response.at(0), response.at(1), response.at(2), response.at(3))); // name-string
                     response = socket.readAll();
+                    qDebug() << "Bits per pixel: " << pixelFormat.bitsPerPixel;
+                    qDebug() << "Depth: " << pixelFormat.depth;
+                    qDebug() << "Big Endian: " << pixelFormat.bigEndianFlag;
+                    qDebug() << "True Color: " << pixelFormat.trueColorFlag;
+                    qDebug() << "Red Max: " << pixelFormat.redMax;
+                    qDebug() << "Green Max: " << pixelFormat.greenMax;
+                    qDebug() << "Blue Max: " << pixelFormat.blueMax;
+                    qDebug() << "Red Shift: " << pixelFormat.redShift;
+                    qDebug() << "Green Shift: " << pixelFormat.greenShift;
+                    qDebug() << "Blue Shift: " << pixelFormat.blueShift;
                     qDebug() << "Name : " << response;
-
                 }
                 else
                 {
@@ -278,7 +267,17 @@ void QVNCClientWidget::paintEvent(QPaintEvent *)
 
     QPainter painter;
     painter.begin(this);
-    painter.drawImage(0, 0, screen.scaled(width(), height(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+    if(isScaled){
+        painter.drawImage(0, 0, screen.scaled(width(), height(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+    }
+    else{
+        qint32 x=0,y=0;
+        if(screen.width()<this->geometry().width())
+            x = (this->geometry().width() - screen.width())/2;
+        if(screen.height()<this->geometry().height())
+            y = (this->geometry().height() - screen.height())/2;
+        painter.drawImage(x, y, screen);
+    }
     painter.end();
 }
 
@@ -306,6 +305,8 @@ void QVNCClientWidget::onServerMessage()
         {
 
             qApp->processEvents();
+            if(!isConnectedToServer())
+                return;
             struct rfbRectHeader
             {
                 quint16 xPosition;
@@ -317,6 +318,7 @@ void QVNCClientWidget::onServerMessage()
             if(socket.read((char *)&rectHeader, sizeof(rectHeader)) != sizeof(rectHeader))
             {
                 qDebug("read size error");
+                socket.readAll();
                 break;
             }
             rectHeader.xPosition = qFromBigEndian(rectHeader.xPosition);
@@ -324,23 +326,17 @@ void QVNCClientWidget::onServerMessage()
             rectHeader.width = qFromBigEndian(rectHeader.width);
             rectHeader.height = qFromBigEndian(rectHeader.height);
             rectHeader.encodingType = qFromBigEndian(rectHeader.encodingType);
+            int noOfBytes = rectHeader.width * rectHeader.height * (pixelFormat.bitsPerPixel / 8);
 
-            if(rectHeader.encodingType == 0 && rectHeader.width*rectHeader.height>0)
-            {
+            if(rectHeader.encodingType == 0 && rectHeader.width*rectHeader.height>0) {
 
                 QImage image(rectHeader.width, rectHeader.height, QImage::Format_RGB32);
-                int noOfBytes = rectHeader.width * rectHeader.height * (pixelFormat.bitsPerPixel / 8);
-                QByteArray pixelsData;
-
-                do
-                {
+                while(socket.bytesAvailable() < noOfBytes){
                     qApp->processEvents();
-                    QByteArray temp = socket.read(noOfBytes);
-                    pixelsData.append(temp);
-                    noOfBytes -= temp.size();
+                    if(!isConnectedToServer())
+                        return;
                 }
-                while(noOfBytes > 0);
-
+                QByteArray pixelsData = socket.read(noOfBytes);
                 uchar* img_pointer = image.bits();
 
                 int pixel_byte_cnt = 0;
@@ -366,11 +362,17 @@ void QVNCClientWidget::onServerMessage()
                 painter.end();
                 repaint();
             }
+            else{
+                socket.readAll();
+                break;
+            }
         }
 
         emit frameBufferUpdated();
         break;
-
+    default:
+        response = socket.readAll();
+        break;
     }
 
     connect(&socket, SIGNAL(readyRead()), this, SLOT(onServerMessage()));
@@ -410,7 +412,6 @@ void QVNCClientWidget::keyPressEvent(QKeyEvent *event)
     message[7] = (key >> 0) & 0xFF;
 
     socket.write(message);
-
 }
 
 void QVNCClientWidget::keyReleaseEvent(QKeyEvent *event)
