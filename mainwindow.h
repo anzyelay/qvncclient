@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include "qsshsocket.h"
 
 namespace Ui {
 class MainWindow;
@@ -20,8 +21,11 @@ private slots:
 
     void on_disconnect_btn_pressed();
 
+    void on_cmd_edit_returnPressed();
+
 private:
     Ui::MainWindow *ui;
+    QSshSocket ssh;
 };
 
 #endif // MAINWINDOW_H
