@@ -17,15 +17,16 @@ HEADERS  += mainwindow.h \
 
 FORMS    += mainwindow.ui
 
-LIBS += -lssh
 
 win32{
 # static lib request this
-    DEFINES += LIBSSH_STATIC
+#    DEFINES += LIBSSH_STATIC
 
     INCLUDEPATH += $$PWD/lib
     DEPENDPATH += $$PWD/lib
-    LIBS += -L$$PWD/lib/ -lgcrypt -lgpg-error
+    LIBS += -L$$PWD/lib/
 }
+
+LIBS += -lssh
 
 

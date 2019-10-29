@@ -40,7 +40,6 @@ static const mode_t MS_MODE_MASK = 0x0000ffff;           ///< low word
 #endif
 */
 
-
 QSshSocket::QSshSocket(QObject * parent )
     :QThread(parent)
 {
@@ -72,16 +71,20 @@ void QSshSocket::run()
     {
         if (m_session == NULL)
         {
-            if (m_host != "")
+            if (!m_host.isEmpty())
             {
                 m_session = ssh_new();
+                if(m_session == NULL){
+                    qDebug("ssh new error");
+                    exit(-1);
+                }
 
                 //set logging to verbose so all errors can be debugged if crash happens
                 int verbosity = SSH_LOG_PROTOCOL;
 
                 // set the pertinant ssh session options
                 ssh_options_set(m_session, SSH_OPTIONS_HOST, m_host.toUtf8().data());
-                ssh_options_set(m_session, SSH_OPTIONS_USER, m_user.toUtf8().data());
+                ssh_options_set(m_session, SSH_OPTIONS_USER, "root");
                 ssh_options_set(m_session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
                 if(m_timeout != -1)
                   ssh_options_set(m_session, SSH_OPTIONS_TIMEOUT, &m_timeout);
@@ -94,43 +97,22 @@ void QSshSocket::run()
                 if (connectionResponse == SSH_OK)
                     emit connected();
                 else
+                {
+                    ssh_free(m_session);
+                    m_session = NULL;
+                    sleep(1);
                     error(SessionCreationError);
-
+                }
             }
 
         }
 
-
         // if we have a vaild ssh connection, authenticate connection with credentials
         else if (!m_loggedIn)
         {
-
-
             // check to see if a username and a password have been given
-            if (m_user != "" && m_password !="")
-            {
-
-                // try authenticating current user at remote host
-                int worked = ssh_userauth_password(m_session, m_user.toUtf8().data(), m_password.toUtf8().data());
-
-
-                // if successful, store user password.
-                if (worked == SSH_OK)
-                {
-                    emit loginSuccessful();
-                    m_loggedIn = true;
-                }
-                else
-                {
-                    m_user = "";
-                    m_password = "";
-                    error(PasswordAuthenticationFailedError);
-                }
-
-
-            }
             // check to see if a username and a private key have been given
-            else if(m_user != "" && m_key != "")
+            if( !m_user.isEmpty() && !m_key.isEmpty())
             {
                 ssh_key private_key;
 
@@ -139,8 +121,8 @@ void QSshSocket::run()
                     // try authenticating current user at remote host
                     int worked = ssh_userauth_publickey(m_session, m_user.toUtf8().data(), private_key);
 
-                    // if successful, store user key.
-                    if (worked == SSH_OK)
+                    // if successful, store user key.//
+                    if (worked == SSH_AUTH_SUCCESS)
                     {
                         emit loginSuccessful();
                         m_loggedIn = true;
@@ -157,6 +139,48 @@ void QSshSocket::run()
                     error(PasswordAuthenticationFailedError);
                 }
             }
+            else if (!m_user.isEmpty() && !m_password.isEmpty())
+            {
+                // try authenticating current user at remote host
+                int worked = ssh_userauth_password(m_session, m_user.toUtf8().data(), m_password.toUtf8().data());
+                // if successful, store user password.
+                if (worked == SSH_AUTH_SUCCESS)
+                {
+                    emit loginSuccessful();
+                    m_loggedIn = true;
+                }
+                else
+                {
+                    qDebug(ssh_get_error(m_session));
+                    m_user = "";
+                    m_password = "";
+                    error(PasswordAuthenticationFailedError);
+                }
+            }
+            else if(!m_user.isEmpty() && m_key.isEmpty()){
+                int rc = ssh_userauth_none(m_session, m_user.toUtf8().data());
+                if( rc != SSH_AUTH_SUCCESS ){
+                    error(PasswordAuthenticationFailedError);
+                    qDebug(ssh_get_error(m_session));
+                    m_user = "";
+                }
+                else{
+                    emit loginSuccessful();
+                    m_loggedIn = true;
+                }
+            }
+            else{
+                int rc = ssh_userauth_publickey_auto(m_session, NULL, NULL);
+                if( rc != SSH_AUTH_SUCCESS ){
+                    error(PasswordAuthenticationFailedError);
+                    qDebug(ssh_get_error(m_session));
+                    qDebug("error: login while no username and password");
+                }
+                else{
+                    emit loginSuccessful();
+                    m_loggedIn = true;
+                }
+            }
         }
         // if all ssh setup has been completed, check to see if we have any commands to execute
         else if (!m_currentOperation.executed)
@@ -170,9 +194,12 @@ void QSshSocket::run()
                 // if attempt fails,return
                 if (ssh_channel_open_session(channel) != SSH_OK)
                 {
+                    qDebug(ssh_get_error((m_session)));
                     error(ChannelCreationError);
+                    ssh_channel_free(channel);
+                    m_currentOperation.executed = true;
+                    continue;
                 }
-
 
                 int requestResponse = SSH_AGAIN;
 
@@ -184,6 +211,10 @@ void QSshSocket::run()
                 if (requestResponse != SSH_OK)
                 {
                     error(ChannelCreationError);
+                    ssh_channel_close(channel);
+                    ssh_channel_free(channel);
+                    m_currentOperation.executed = true;
+                    continue;
                 }
 
 

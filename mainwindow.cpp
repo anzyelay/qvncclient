@@ -32,17 +32,19 @@ void MainWindow::on_connect_btn_pressed()
 
 void MainWindow::on_disconnect_btn_pressed()
 {
+    ssh.disconnectFromHost();
     ui->vncView->disconnectFromVncServer();
 }
 
 void MainWindow::on_cmd_edit_returnPressed()
 {
-    if(!ssh.isConnected())
-        ssh.connectToHost(ui->host_edit->text());
+    QString usrname,passwd;
     if(!ssh.isLoggedIn())
     {
-        QString usrname = QInputDialog::getText(this, "Username", "Enter login name:", QLineEdit::Normal);
-        QString passwd = QInputDialog::getText(this, "Password", "Enter password:", QLineEdit::Password);
+        usrname = QInputDialog::getText(this, "Username", "Enter login name:", QLineEdit::Normal);
+        passwd = QInputDialog::getText(this, "Password", "Enter password:", QLineEdit::Password);
+        if(!ssh.isConnected())
+            ssh.connectToHost(ui->host_edit->text());
         ssh.login(usrname, passwd);
     }
     ssh.executeCommand(ui->cmd_edit->text());
