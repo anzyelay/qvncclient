@@ -15,18 +15,19 @@ HEADERS  += mainwindow.h \
     qsshsocket.h \
     qvncclientwidget.h
 
-FORMS    += mainwindow.ui
+FORMS    += mainwindow.ui \
+    dialog_setting.ui
 
-
+LIBS += -lssh
 win32{
 # static lib request this
-#    DEFINES += LIBSSH_STATIC
+    DEFINES += LIBSSH_STATIC
 
     INCLUDEPATH += $$PWD/lib
     DEPENDPATH += $$PWD/lib
-    LIBS += -L$$PWD/lib/
+    LIBS += -lgcrypt -lgpg-error
+    LIBS += -lws2_32 -lz
 }
 
-LIBS += -lssh
 
 

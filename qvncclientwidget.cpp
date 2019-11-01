@@ -79,10 +79,15 @@ bool QVNCClientWidget::connectToVncServer(QString ip, QString password, int port
     {
         QByteArray response;
 
-        qDebug() << "Security Handshake";
+//        qDebug() << "Security Handshake";
         socket.waitForReadyRead();
         response = socket.readAll();
-        qDebug() << "Server Answer : " << response;
+        if(response.isEmpty()){
+            qDebug() << "server answer is empty!"<< socket.errorString();
+            socket.disconnectFromHost();
+            return false;
+        }
+//        qDebug() << "Server Answer : " << response;
         char serverMinorVersion = response.at(10);
         response.clear();
         switch (serverMinorVersion)
@@ -99,7 +104,6 @@ bool QVNCClientWidget::connectToVncServer(QString ip, QString password, int port
         if(response.isEmpty())
         {
             qDebug() << "Number of security types empty!";
-            socket.close();
             socket.disconnectFromHost();
             return false;
         }
@@ -123,7 +127,7 @@ bool QVNCClientWidget::connectToVncServer(QString ip, QString password, int port
         if( response.at(0) != 0)
         {
             response = socket.read(response.at(0)); // Security types
-            qDebug() << "Connection successful";
+//            qDebug() << "Connection successful";
 
             if(response.contains('\x01')) // None security mode supported
             {
@@ -166,6 +170,7 @@ clientinit:
                     response = socket.read(4); // name-length
 //                    response = socket.read(qMakeU32(response.at(0), response.at(1), response.at(2), response.at(3))); // name-string
                     response = socket.readAll();
+                    /*
                     qDebug() << "Bits per pixel: " << pixelFormat.bitsPerPixel;
                     qDebug() << "Depth: " << pixelFormat.depth;
                     qDebug() << "Big Endian: " << pixelFormat.bigEndianFlag;
@@ -177,6 +182,7 @@ clientinit:
                     qDebug() << "Green Shift: " << pixelFormat.greenShift;
                     qDebug() << "Blue Shift: " << pixelFormat.blueShift;
                     qDebug() << "Name : " << response;
+                    */
                 }
                 else
                 {
@@ -390,7 +396,8 @@ void QVNCClientWidget::disconnectFromVncServer()
 {
     disconnect(&socket, SIGNAL(readyRead()), this, SLOT(onServerMessage()));
     socket.disconnectFromHost();
-    socket.close();
+    screen.fill(Qt::red);
+    update();
 }
 
 void QVNCClientWidget::keyPressEvent(QKeyEvent *event)

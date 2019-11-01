@@ -1,5 +1,7 @@
 #include "qsshsocket.h"
 #include <QFileInfo>
+#include <QLineEdit>
+#include <QInputDialog>
 // if compiling in windows, add needed flags.
 /*
 #ifdef _WIN32
@@ -52,201 +54,273 @@ QSshSocket::QSshSocket(QObject * parent )
     m_workingDirectory = ".";
 
     qRegisterMetaType<QSshSocket::SshError>("QSshSocket::SshError");
-    m_currentOperation.executed = true;
-
-    m_run = true;
-    start();
+#ifdef LIBSSH_STATIC
+    ssh_init();
+#endif
 }
 
 QSshSocket::~QSshSocket()
 {
+#ifdef LIBSSH_STATIC
+    ssh_finalize();
+#endif
     m_run = false;
     this->wait();
 }
 
-void QSshSocket::run()
+/* A very simple terminal emulator:
+   - print data received from the remote computer
+   - send keyboard input to the remote computer
+*/
+int QSshSocket::interactiveShellSession(void)
 {
-
-    while(m_run)
-    {
-        if (m_session == NULL)
-        {
-            if (!m_host.isEmpty())
-            {
-                m_session = ssh_new();
-                if(m_session == NULL){
-                    qDebug("ssh new error");
-                    exit(-1);
-                }
-
-                //set logging to verbose so all errors can be debugged if crash happens
-                int verbosity = SSH_LOG_PROTOCOL;
-
-                // set the pertinant ssh session options
-                ssh_options_set(m_session, SSH_OPTIONS_HOST, m_host.toUtf8().data());
-                ssh_options_set(m_session, SSH_OPTIONS_USER, "root");
-                ssh_options_set(m_session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
-                if(m_timeout != -1)
-                  ssh_options_set(m_session, SSH_OPTIONS_TIMEOUT, &m_timeout);
-                ssh_options_set(m_session, SSH_OPTIONS_PORT, &m_port);
-
-                // try to connect given host, user, port
-                int connectionResponse = ssh_connect(m_session);
-
-                // if connection is Successful keep track of connection info.
-                if (connectionResponse == SSH_OK)
-                    emit connected();
-                else
-                {
-                    ssh_free(m_session);
-                    m_session = NULL;
-                    sleep(1);
-                    error(SessionCreationError);
-                }
+    int rc;
+    char buffer[8000];
+    int nbytes,totalBytes, nwritten;
+    /* Session and terminal initialization skipped */
+    ssh_channel channel = ssh_channel_new(m_session);
+    if(channel == NULL)
+        return SSH_ERROR;
+    if((rc = ssh_channel_open_session(channel) )!= SSH_OK){
+        ssh_channel_free(channel);
+        return rc;
+    }
+    rc = ssh_channel_request_shell(channel);
+    if (rc != SSH_OK){
+        ssh_channel_close(channel);
+        ssh_channel_free(channel);
+        return rc;
+    }
+    QString curCmdStr="login-shell";
+    ssh_channel_write(channel,"\n", 1);
+    msleep(100);
+    while (m_run && m_currentOperation.type == ShellLoop
+           && ssh_channel_is_open(channel)
+           && !ssh_channel_is_eof(channel)) {
+        totalBytes = 0;
+        do{
+            nbytes = ssh_channel_read_timeout(channel, &buffer[totalBytes], sizeof(buffer) - totalBytes, 0, 200);
+            if (nbytes > 0){
+                totalBytes += nbytes;
             }
-
-        }
-
-        // if we have a vaild ssh connection, authenticate connection with credentials
-        else if (!m_loggedIn)
-        {
-            // check to see if a username and a password have been given
-            // check to see if a username and a private key have been given
-            if( !m_user.isEmpty() && !m_key.isEmpty())
-            {
-                ssh_key private_key;
-
-                if(ssh_pki_import_privkey_base64(m_key.toUtf8().data(), NULL, NULL, NULL, &private_key) == SSH_OK)
-                {
-                    // try authenticating current user at remote host
-                    int worked = ssh_userauth_publickey(m_session, m_user.toUtf8().data(), private_key);
-
-                    // if successful, store user key.//
-                    if (worked == SSH_AUTH_SUCCESS)
-                    {
-                        emit loginSuccessful();
-                        m_loggedIn = true;
-                    }
-                    else
-                    {
-                        m_key = "";
-                        error(PasswordAuthenticationFailedError);
-                    }
-                }
-                else
-                {
-                    m_key = "";
-                    error(PasswordAuthenticationFailedError);
-                }
-            }
-            else if (!m_user.isEmpty() && !m_password.isEmpty())
-            {
-                // try authenticating current user at remote host
-                int worked = ssh_userauth_password(m_session, m_user.toUtf8().data(), m_password.toUtf8().data());
-                // if successful, store user password.
-                if (worked == SSH_AUTH_SUCCESS)
-                {
-                    emit loginSuccessful();
-                    m_loggedIn = true;
-                }
-                else
-                {
-                    qDebug(ssh_get_error(m_session));
-                    m_user = "";
-                    m_password = "";
-                    error(PasswordAuthenticationFailedError);
-                }
-            }
-            else if(!m_user.isEmpty() && m_key.isEmpty()){
-                int rc = ssh_userauth_none(m_session, m_user.toUtf8().data());
-                if( rc != SSH_AUTH_SUCCESS ){
-                    error(PasswordAuthenticationFailedError);
-                    qDebug(ssh_get_error(m_session));
-                    m_user = "";
-                }
-                else{
-                    emit loginSuccessful();
-                    m_loggedIn = true;
-                }
-            }
-            else{
-                int rc = ssh_userauth_publickey_auto(m_session, NULL, NULL);
-                if( rc != SSH_AUTH_SUCCESS ){
-                    error(PasswordAuthenticationFailedError);
-                    qDebug(ssh_get_error(m_session));
-                    qDebug("error: login while no username and password");
-                }
-                else{
-                    emit loginSuccessful();
-                    m_loggedIn = true;
-                }
-            }
-        }
-        // if all ssh setup has been completed, check to see if we have any commands to execute
-        else if (!m_currentOperation.executed)
-        {
-
-            if (m_currentOperation.type == Command || m_currentOperation.type == WorkingDirectoryTest)
-            {
-                // attempt to open ssh shell channel
-                ssh_channel channel = ssh_channel_new(m_session);
-
-                // if attempt fails,return
-                if (ssh_channel_open_session(channel) != SSH_OK)
-                {
-                    qDebug(ssh_get_error((m_session)));
-                    error(ChannelCreationError);
-                    ssh_channel_free(channel);
-                    m_currentOperation.executed = true;
-                    continue;
-                }
-
-                int requestResponse = SSH_AGAIN;
-
-                // attempt to execute shell command
-                while (requestResponse == SSH_AGAIN)
-                    requestResponse = ssh_channel_request_exec(channel, m_currentOperation.adminCommand.toUtf8().data());
-
-                // if attempt not executed, close connection then return
-                if (requestResponse != SSH_OK)
-                {
-                    error(ChannelCreationError);
-                    ssh_channel_close(channel);
-                    ssh_channel_free(channel);
-                    m_currentOperation.executed = true;
-                    continue;
-                }
-
-
-                QByteArray buffer;
-                buffer.resize(1000);
-
-                // read in command result
-                int totalBytes = 0, newBytes = 0;
-                do
-                {
-                    newBytes = ssh_channel_read(channel, &(buffer.data()[totalBytes]), buffer.size() - totalBytes, 0);
-                    if (newBytes > 0)
-                        totalBytes += newBytes;
-                }while (newBytes > 0);
-
-                // close channel
+            else if(nbytes == SSH_ERROR){
                 ssh_channel_send_eof(channel);
                 ssh_channel_close(channel);
                 ssh_channel_free(channel);
+                return nbytes;
+            }
+            else if(nbytes == SSH_AGAIN){
+                msleep(10);
+                qDebug("read again");
+            }
+        }while(nbytes!=0);
+        if(!curCmdStr.isEmpty() || totalBytes > 0 ){
+            QString response  = QString::fromUtf8(buffer, totalBytes);
+            write(1, buffer, totalBytes);
+            memset(buffer, 0, sizeof(buffer));
+            emit commandExecuted(curCmdStr, response);
+            curCmdStr.clear();
+        }
+        if ( m_currentOperation.shellCommand.isEmpty() )
+        {
+            msleep(100);
+            continue;
+        }
+        curCmdStr = m_currentOperation.shellCommand.takeFirst();
+        // add exit cmd to shellCmd if want to exit interactive shell
+        if(curCmdStr=="exit"){
+            break;
+        }
+        nbytes = curCmdStr.size();
+        if (nbytes > 0) {
+            nwritten = ssh_channel_write(channel, curCmdStr.toUtf8().data(), nbytes);
+            if (nwritten != nbytes) break;
+            nwritten = ssh_channel_write(channel,"\n", 1);
+        }
+    }
+    ssh_channel_send_eof(channel);
+    ssh_channel_close(channel);
+    ssh_channel_free(channel);
+    return SSH_OK;
 
-                QString response = QString(buffer).mid(0,totalBytes);
-//                response.replace("\n","");
-                if (m_currentOperation.type == WorkingDirectoryTest)
-                {
-                    if (response == "exists")
-                        m_workingDirectory = m_nextWorkingDir;
-                    m_nextWorkingDir = ".";
-                    emit workingDirectorySet(m_workingDirectory);
+}
+
+int QSshSocket::executeOneRemoteCmd(const QString &cmd, QString &response)
+{
+    int rc;
+    ssh_channel channel = ssh_channel_new(m_session);
+    if(channel == NULL)
+        return SSH_ERROR;
+    if((rc = ssh_channel_open_session(channel) )!= SSH_OK){
+        ssh_channel_free(channel);
+        qDebug(ssh_get_error((m_session)));
+        return rc;
+    }
+    rc = SSH_AGAIN;
+    while (rc == SSH_AGAIN)
+        rc = ssh_channel_request_exec(channel, cmd.toUtf8().data());
+
+    if (rc != SSH_OK)
+    {
+        ssh_channel_close(channel);
+        ssh_channel_free(channel);
+        return rc;
+    }
+
+    QByteArray buffer;
+    buffer.resize(8000);
+    // read in command result
+    int totalBytes = 0, newBytes = 0;
+    do
+    {
+        newBytes = ssh_channel_read_timeout(channel, &(buffer.data()[totalBytes]), buffer.size() - totalBytes, 0, 2000);
+        if (newBytes > 0)
+            totalBytes += newBytes;
+    }while (newBytes > 0);
+
+    // close channel
+    if(totalBytes==0){
+        ssh_channel_close(channel);
+        ssh_channel_free(channel);
+        return SSH_ERROR;
+    }
+    response = QString(buffer).mid(0,totalBytes);
+    ssh_channel_send_eof(channel);
+    ssh_channel_close(channel);
+    ssh_channel_free(channel);
+    return SSH_OK;
+}
+
+int QSshSocket::executeLogin(void)
+{
+    int worked;
+    if (m_session != NULL) {
+        if(ssh_is_connected(m_session))
+            ssh_disconnect(m_session);
+        ssh_free(m_session);
+        m_session = NULL;
+    }
+    if (m_host.isEmpty())
+    {
+        qDebug("host is empty,set it first");
+        return SSH_ERROR;
+    }
+    m_session = ssh_new();
+    if(m_session == NULL){
+        qDebug()<<"ssh_new error:"<<tr(ssh_get_error(m_session));
+        exit(-1);
+    }
+    //set logging to verbose so all errors can be debugged if crash happens
+    int verbosity = SSH_LOG_PROTOCOL;
+    // set the pertinant ssh session options
+    ssh_options_set(m_session, SSH_OPTIONS_HOST, m_host.toUtf8().data());
+    if(m_user.isEmpty()) m_user = "root";
+    ssh_options_set(m_session, SSH_OPTIONS_USER, m_user.toUtf8().data());
+//    ssh_options_set(m_session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
+    if(m_timeout != -1)
+        ssh_options_set(m_session, SSH_OPTIONS_TIMEOUT, &m_timeout);
+    ssh_options_set(m_session, SSH_OPTIONS_PORT, &m_port);
+    // try to connect given host, user, port
+    worked = ssh_connect(m_session);
+    // if connection is Successful keep track of connection info.
+    if (worked != SSH_OK)
+    {
+        ssh_free(m_session);
+        m_session = NULL;
+        error(SessionCreationError);
+        return worked;
+    }
+
+    // check to see if a username and a password have been given
+    // check to see if a username and a private key have been given
+    if( !m_key.isEmpty() ) {
+        ssh_key private_key;
+        worked = ssh_pki_import_privkey_base64(m_key.toUtf8().data(), NULL, NULL, NULL, &private_key);
+        if(worked == SSH_OK) {
+            // try authenticating current user at remote host
+            worked = ssh_userauth_publickey(m_session, m_user.toUtf8().data(), private_key);
+            // if successful, store user key.//
+            if (worked == SSH_AUTH_SUCCESS) {
+                m_loggedIn = true;
+            }
+            else {
+                m_key.clear();
+            }
+        }
+        else {
+            m_key.clear();
+        }
+    }
+    else if ( !m_password.isEmpty() ) {
+        // try authenticating current user at remote host
+        worked = ssh_userauth_password(m_session, m_user.toUtf8().data(), m_password.toUtf8().data());
+        if (worked == SSH_AUTH_SUCCESS) {
+            m_loggedIn = true;
+        }
+        else if(worked == SSH_AUTH_AGAIN){
+            qDebug("login again");
+            executeLogin();// login agian
+        }
+        else {
+            qDebug(ssh_get_error(m_session));
+            m_password.clear();
+        }
+    }
+    else {
+        worked = ssh_userauth_publickey_auto(m_session, NULL, NULL);
+        if( worked == SSH_AUTH_SUCCESS ){
+            m_loggedIn = true;
+        }
+        else{
+            worked = ssh_userauth_none(m_session, m_user.toUtf8().data());
+            if( worked == SSH_AUTH_SUCCESS ){
+                m_loggedIn = true;
+            }
+            else{
+                qDebug()<<__func__<< __LINE__;
+                qDebug(ssh_get_error(m_session));
+            }
+        }
+    }
+    if(!m_loggedIn)
+        error(PasswordAuthenticationFailedError);
+    else {
+        emit loginSuccessful();
+    }
+    return worked;
+}
+
+void QSshSocket::run()
+{
+    while(m_run)
+    {
+        {
+            // authenticate connection with credentials
+            if (!m_loggedIn || m_currentOperation.type == Login){
+                executeLogin();
+            }
+            else if(m_currentOperation.type == ShellLoop){
+                interactiveShellSession();
+                m_currentOperation.shellCommand.clear();
+            }
+            // if all ssh setup has been completed, check to see if we have any commands to execute
+            else if (m_currentOperation.type == Command || m_currentOperation.type == WorkingDirectoryTest)
+            {
+                QString response;
+//                int rc = executeShellCmd(m_currentOperation.adminCommand, response);
+                int rc = executeOneRemoteCmd(m_currentOperation.adminCommand, response);
+                if(rc == SSH_OK){
+                    if (m_currentOperation.type == WorkingDirectoryTest)
+                    {
+                        response.replace("\n","");
+                        if (response == "exists")
+                            m_workingDirectory = m_nextWorkingDir;
+                        m_nextWorkingDir = ".";
+                        emit workingDirectorySet(m_workingDirectory);
+                    }
+                    else
+                        emit commandExecuted( m_currentOperation.command, response);
                 }
-                else
-                    emit commandExecuted( m_currentOperation.command, response) ;
-
             }
             // if all ssh setup has been completed, check to see if we have any file transfers to execute
             else if (m_currentOperation.type == Pull)
@@ -377,65 +451,75 @@ void QSshSocket::run()
                 ssh_scp_free(scpSession);
 
                 emit pushSuccessful(m_currentOperation.localPath,m_currentOperation.remotePath);
-
             }
-
-
-            m_currentOperation.executed = true;
+            else {
+                msleep(10);
+            }
         }
-        else
-        {
-            msleep(100);
-        }
-
     }
+    if (m_session != NULL)
+    {
+        if(ssh_is_connected(m_session))
+            ssh_disconnect(m_session);
+        ssh_free(m_session);
+    }
+    m_session = NULL;
+    emit disconnected();
 
 }
 void QSshSocket::disconnectFromHost()
 {
+    m_run = false;
+    this->wait();
     m_host = "";
     m_user = "";
     m_password = "";
     m_key = "";
     m_port = -1;
     m_loggedIn = false;
-    if (m_session != NULL)
-    {
-        ssh_disconnect(m_session);
-        ssh_free(m_session);
-    }
-    m_session = NULL;
 }
 
-void QSshSocket::connectToHost(QString host, int port)
+void QSshSocket::setKey(QString key)
+{
+    m_key = key;
+}
+
+void QSshSocket::setConnectHost(QString host, int port)
 {
     m_host = host;
     m_port = port;
 }
 void QSshSocket::login(QString user, QString password)
 {
+    m_run = true;
+    start();
     m_user = user;
     m_password = password;
+    m_currentOperation.type = Login;
+    msleep(100);
+    m_currentOperation.type = Unkonw;
 }
-void QSshSocket::setKey(QString key)
-{
-  m_key = key;
-}
-
 void QSshSocket::setTimeout(long timeout)
 {
-  m_timeout = timeout;
+    m_timeout = timeout;
 }
 void QSshSocket::executeCommand(QString command)
 {
-    m_currentOperation.type = Command;
     if (m_workingDirectory != ".")
         m_currentOperation.adminCommand = "cd " + m_workingDirectory + "; "  + command;
     else
         m_currentOperation.adminCommand = command ;
 
-    m_currentOperation.command =command;
-    m_currentOperation.executed = false;
+    m_currentOperation.command = command;
+    m_currentOperation.type = Command;
+    msleep(100);
+    m_currentOperation.type = Unkonw;
+}
+void QSshSocket::add2ShellCommand(QString command)
+{
+    if(m_currentOperation.type != ShellLoop)
+        return;
+    m_currentOperation.shellCommand << command.split(";", QString::SkipEmptyParts);
 }
 
 void QSshSocket::pullFile(QString localPath, QString remotePath)
@@ -446,7 +530,8 @@ void QSshSocket::pullFile(QString localPath, QString remotePath)
     else
         m_currentOperation.remotePath = m_workingDirectory + "/" + remotePath;
     m_currentOperation.type = Pull;
-    m_currentOperation.executed = false;
+    msleep(100);
+    m_currentOperation.type = Unkonw;
 }
 
 void QSshSocket::pushFile(QString localPath, QString remotePath)
@@ -457,20 +542,17 @@ void QSshSocket::pushFile(QString localPath, QString remotePath)
     else
         m_currentOperation.remotePath = m_workingDirectory + "/" + remotePath;
     m_currentOperation.type = Push;
-    m_currentOperation.executed = false;
+    msleep(100);
+    m_currentOperation.type = Unkonw;
 }
 
 void QSshSocket::setWorkingDirectory(QString path)
 {
     m_nextWorkingDir = path;
-    m_currentOperation.type = WorkingDirectoryTest;
     m_currentOperation.adminCommand = "[ -d " + m_nextWorkingDir +" ] && echo 'exists'";
-    m_currentOperation.executed = false;
-}
-
-bool QSshSocket::isConnected()
-{
-    return m_session != NULL;
+    m_currentOperation.type = WorkingDirectoryTest;
+    msleep(100);
+    m_currentOperation.type = Unkonw;
 }
 
 bool QSshSocket::isLoggedIn()

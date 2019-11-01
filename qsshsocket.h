@@ -53,7 +53,7 @@ public:
         \param port The port to establish an ssh connection over.
         \brief This function connects this socket to the specified host over the specified port. On success, the signal connected is emitted while error is emmited on failure.
     */
-    void connectToHost(QString host, int port =22);
+    void setConnectHost(QString host, int port =22);
 
     /*!
         \brief This function disconnects the socket from the current host (if there is one. On success, the signal disconnected is emitted while error is emmited on failure.
@@ -66,6 +66,11 @@ public:
         On success, the signal commandExecuted is emitted while error is emmited on failure.
     */
     void executeCommand(QString command);
+    inline void loginInteractiveShell(void){
+        m_currentOperation.shellCommand.clear();
+        m_currentOperation.type = ShellLoop;
+    }
+    void add2ShellCommand(QString command);
 
     /*!
         \brief Returns the hostname of the remote machine this socket is connected to. If not connected to a remote host, this returns "".
@@ -78,17 +83,12 @@ public:
     bool isLoggedIn();
 
     /*!
-        \brief Returns whether or not this socket is currently connected to a remote host.
-    */
-    bool isConnected();
-
-    /*!
         \param user The username to login with.
         \param password The password of the account for the specified username.
         \brief This function to login to the currently connected host given credentials.
         On success, the signal authenticated is emitted while error is emmited on failure.
     */
-    void login(QString user, QString password);
+    void login(QString user, QString password="");
 
     /*!
         \param key The private key to login with.
@@ -140,13 +140,7 @@ public:
     QString user();
 
 
-
 signals:
-
-    /*!
-        \brief This signal is emitted when remote host has been connected to."
-    */
-    void connected();
 
     /*!
         \brief This signal is emitted when this class has been properly disconnected from a remote host.
@@ -198,18 +192,24 @@ private:
 
     enum SSHOperationType
     {
+        Login,
+        ShellLoop,
         Command,
         WorkingDirectoryTest,
         Pull,
-        Push
+        Push,
+        Unkonw,
     };
 
     struct SSHOperation
     {
         SSHOperationType type;
         QString adminCommand,command, localPath, remotePath;
-        bool executed;
+        QStringList shellCommand;
     };
+    int executeLogin(void);
+    int executeOneRemoteCmd(const QString &cmd, QString &response);
+    int interactiveShellSession();
 
     int m_port;
     long m_timeout = -1;
