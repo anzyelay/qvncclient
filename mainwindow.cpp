@@ -43,6 +43,7 @@ MainWindow::MainWindow(QWidget *parent) :
             ui->vncView->connectToVncServer(cfg->value("hostip").toString(), "");
             ui->vncView->startFrameBufferUpdate();
             ui->restart_btn->setText("断开远程");
+            ui->restart_btn->setEnabled(true);
         }
     });
     connect(&ssh,&QSshSocket::loginSuccessful,this,[=](){
@@ -56,10 +57,10 @@ MainWindow::MainWindow(QWidget *parent) :
         QDialog dialog;
         Ui::Dialog setting_ui;
         setting_ui.setupUi(&dialog);
-        setting_ui.hostip->setText(cfg->value("hostip","192.168.200.52").toString());
+        setting_ui.hostip->setText(cfg->value("hostip","192.168.200.166").toString());
         setting_ui.port->setText(cfg->value("port","22").toString());
-        setting_ui.username->setText(cfg->value("username","anzye").toString());
-        setting_ui.passwd->setText(cfg->value("passwd","lxa123").toString());
+        setting_ui.username->setText(cfg->value("username","root").toString());
+        setting_ui.passwd->setText(cfg->value("passwd","").toString());
         setting_ui.cmd->setText(cfg->value("cmd",LOGIN_SHELL_CMD_STR).toString());
         setting_ui.exitCmd->setText(cfg->value("exitCmd",LOGOUT_SHELL_CMD_STR).toString());
         if(dialog.exec()==QDialog::Accepted){
@@ -155,8 +156,9 @@ void MainWindow::on_restart_btn_clicked()
     else{
         if(!ssh.isLoggedIn())
             return;
-        if(!cfg->value("cmd").toString().isEmpty())
+        if(!cfg->value("cmd").toString().isEmpty()){
             ssh.add2ShellCommand(cfg->value("cmd").toString());
-        ui->restart_btn->setText("断开远程");
+            ui->restart_btn->setEnabled(false);
+        }
     }
 }

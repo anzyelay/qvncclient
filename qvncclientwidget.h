@@ -35,13 +35,12 @@ public:
     bool sendSetPixelFormat(void);
 public slots:
     void sendFrameBufferUpdateRequest(int incremental=1);
-    void setFullScreen(bool full){
-        isScaled = full;
-    }
+    void setFullScreen(bool full);
     //void send
 
 protected:
-    void paintEvent(QPaintEvent *);
+    void resizeEvent(QResizeEvent *e);
+    void paintEvent(QPaintEvent *event);
     void keyPressEvent(QKeyEvent *event);
     void keyReleaseEvent(QKeyEvent *event);
     void mouseMoveEvent(QMouseEvent *event);
@@ -62,6 +61,7 @@ private:
 
     int frameBufferWidth;
     int frameBufferHeight;
+    int paintTargetX,paintTargetY;
 
     struct PixelFormat
     {

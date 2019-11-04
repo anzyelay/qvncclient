@@ -262,8 +262,29 @@ void QVNCClientWidget::sendFrameBufferUpdateRequest(int incremental)
 
     socket.write(frameBufferUpdateRequest);
 }
+void QVNCClientWidget::setFullScreen(bool full)
+{
+    isScaled = full;
+    resizeEvent(NULL);
+}
+void QVNCClientWidget::resizeEvent(QResizeEvent *e)
+{
+    if(isScaled){
+        paintTargetX = 0; paintTargetY = 0;
+    }
+    else{
+        qint32 x=0,y=0;
+        if(screen.width()<this->geometry().width())
+            x = (this->geometry().width() - screen.width())/2;
+        if(screen.height()<this->geometry().height())
+            y = (this->geometry().height() - screen.height())/2;
+        paintTargetX = x;
+        paintTargetY = y;
+    }
+    QWidget::resizeEvent(e);
+}
 
-void QVNCClientWidget::paintEvent(QPaintEvent *)
+void QVNCClientWidget::paintEvent(QPaintEvent *event)
 {
     if(screen.isNull())
     {
@@ -274,16 +295,10 @@ void QVNCClientWidget::paintEvent(QPaintEvent *)
     QPainter painter;
     painter.begin(this);
     if(isScaled){
-        painter.drawImage(0, 0, screen.scaled(width(), height(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+        painter.drawImage(paintTargetX, paintTargetY, screen.scaled(width(), height(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
     }
-    else{
-        qint32 x=0,y=0;
-        if(screen.width()<this->geometry().width())
-            x = (this->geometry().width() - screen.width())/2;
-        if(screen.height()<this->geometry().height())
-            y = (this->geometry().height() - screen.height())/2;
-        painter.drawImage(x, y, screen);
-    }
+    else
+        painter.drawImage(paintTargetX, paintTargetY, screen);
     painter.end();
 }
 
@@ -366,7 +381,6 @@ void QVNCClientWidget::onServerMessage()
                 QPainter painter(&screen);
                 painter.drawImage(rectHeader.xPosition, rectHeader.yPosition, image);
                 painter.end();
-                repaint();
             }
             else{
                 socket.readAll();
@@ -374,6 +388,7 @@ void QVNCClientWidget::onServerMessage()
             }
         }
 
+        repaint();
         emit frameBufferUpdated();
         break;
     default:
@@ -471,8 +486,17 @@ void QVNCClientWidget::mouseMoveEvent(QMouseEvent *event)
 
     }
 
-    quint16 posX = (double(event->pos().x()) / double(width())) * double(frameBufferWidth);
-    quint16 posY = (double(event->pos().y()) / double(height())) * double(frameBufferHeight);
+    qint16 posX, posY;
+    if(isScaled){
+        posX = (double(event->pos().x()) / double(width())) * double(frameBufferWidth);
+        posY = (double(event->pos().y()) / double(height())) * double(frameBufferHeight);
+    }
+    else {
+        posX = event->pos().x() - paintTargetX;
+        posY = event->pos().y() - paintTargetY;
+        if(posX<0 || posY<0)
+            return;
+    }
 
     message[2] = (posX >> 8) & 0xFF;
     message[3] = (posX >> 0) & 0xFF;
@@ -514,8 +538,17 @@ void QVNCClientWidget::mousePressEvent(QMouseEvent *event)
 
     }
 
-    quint16 posX = (double(event->pos().x()) / double(width())) * double(frameBufferWidth);
-    quint16 posY = (double(event->pos().y()) / double(height())) * double(frameBufferHeight);
+    qint16 posX, posY;
+    if(isScaled){
+        posX = (double(event->pos().x()) / double(width())) * double(frameBufferWidth);
+        posY = (double(event->pos().y()) / double(height())) * double(frameBufferHeight);
+    }
+    else {
+        posX = event->pos().x() - paintTargetX;
+        posY = event->pos().y() - paintTargetY;
+        if(posX<0 || posY<0)
+            return;
+    }
 
     message[2] = (posX >> 8) & 0xFF;
     message[3] = (posX >> 0) & 0xFF;
@@ -555,8 +588,17 @@ void QVNCClientWidget::mouseReleaseEvent(QMouseEvent *event)
 
     }
 
-    quint16 posX = (double(event->pos().x()) / double(width())) * double(frameBufferWidth);
-    quint16 posY = (double(event->pos().y()) / double(height())) * double(frameBufferHeight);
+    qint16 posX, posY;
+    if(isScaled){
+        posX = (double(event->pos().x()) / double(width())) * double(frameBufferWidth);
+        posY = (double(event->pos().y()) / double(height())) * double(frameBufferHeight);
+    }
+    else {
+        posX = event->pos().x() - paintTargetX;
+        posY = event->pos().y() - paintTargetY;
+        if(posX<0 || posY<0)
+            return;
+    }
 
     message[2] = (posX >> 8) & 0xFF;
     message[3] = (posX >> 0) & 0xFF;

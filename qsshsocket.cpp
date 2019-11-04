@@ -116,7 +116,7 @@ int QSshSocket::interactiveShellSession(void)
         }while(nbytes!=0);
         if(!curCmdStr.isEmpty() || totalBytes > 0 ){
             QString response  = QString::fromUtf8(buffer, totalBytes);
-            write(1, buffer, totalBytes);
+//            write(1, buffer, totalBytes);
             memset(buffer, 0, sizeof(buffer));
             emit commandExecuted(curCmdStr, response);
             curCmdStr.clear();
