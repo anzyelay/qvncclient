@@ -66,7 +66,7 @@ public:
         On success, the signal commandExecuted is emitted while error is emmited on failure.
     */
     void executeCommand(QString command);
-    inline void loginInteractiveShell(void){
+    inline void clearShellCmd(void){
         m_currentOperation.shellCommand.clear();
         m_currentOperation.type = ShellLoop;
     }
@@ -210,6 +210,8 @@ private:
     int executeLogin(void);
     int executeOneRemoteCmd(const QString &cmd, QString &response);
     int interactiveShellSession();
+    int executeScpPush();
+    int executeScpPull();
 
     int m_port;
     long m_timeout = -1;

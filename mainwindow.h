@@ -19,18 +19,19 @@ public:
     ~MainWindow();
 
 private slots:
-    void on_connect_btn_pressed();
+    void on_btnConnect_pressed();
 
-    void on_disconnect_btn_pressed();
+    void on_btnDisconnect_pressed();
 
-    void on_cmd_edit_returnPressed();
+    void on_editCmd_returnPressed();
 
-    void on_toolButton_cmd_pressed();
+    void on_toolBtnCmd_pressed();
 
-    void on_toolButton_set_pressed();
+    void on_toolBtnSet_pressed();
 
+    void on_btnRemoteCtrl_clicked();
 
-    void on_restart_btn_clicked();
+    void on_btnUpload_clicked();
 
 private:
     Ui::MainWindow *ui;

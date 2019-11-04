@@ -12,48 +12,28 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     cfg = new QSettings("./"+qAppName()+".ini",QSettings::IniFormat, this);
     ui->setupUi(this);
-    connect(ui->disstyle_btn,&QPushButton::pressed,[=](){
-        if(ui->disstyle_btn->text() == "FULL"){
-            ui->disstyle_btn->setText("CENTER");
+    connect(ui->btnShowStyle,&QPushButton::pressed,[=](){
+        if(ui->btnShowStyle->text() == "FULL"){
+            ui->btnShowStyle->setText("CENTER");
             ui->vncView->setFullScreen(true);
         }
         else {
-            ui->disstyle_btn->setText("FULL");
+            ui->btnShowStyle->setText("FULL");
             ui->vncView->setFullScreen(false);
         }
     });
-    if(ui->disstyle_btn->text() == "FULL"){
-        ui->disstyle_btn->setText("CENTER");
+    if(ui->btnShowStyle->text() == "FULL"){
+        ui->btnShowStyle->setText("CENTER");
         ui->vncView->setFullScreen(true);
     }
     else {
-        ui->disstyle_btn->setText("FULL");
+        ui->btnShowStyle->setText("FULL");
         ui->vncView->setFullScreen(false);
     }
-    connect(&ssh,&QSshSocket::error,[&](QSshSocket::SshError se){
+    connect(&ssh, &QSshSocket::error, this ,[&](QSshSocket::SshError se){
         ui->statusBar->showMessage(tr("error :%1").arg(se));
     });
-    connect(&ssh,&QSshSocket::commandExecuted,this,[=](QString s1,QString s2){
-        if(!s1.isEmpty())
-            ui->textEdit->append(ssh.user()+"@"+ssh.host()+">>"+s1);
-        if(!s2.isEmpty())
-            ui->textEdit->append(s2);
-        ui->textEdit->moveCursor(QTextCursor::End);
-        if(s2.contains("connect2vnc")){
-            ui->vncView->connectToVncServer(cfg->value("hostip").toString(), "");
-            ui->vncView->startFrameBufferUpdate();
-            ui->restart_btn->setText("断开远程");
-            ui->restart_btn->setEnabled(true);
-        }
-    });
-    connect(&ssh,&QSshSocket::loginSuccessful,this,[=](){
-        ui->statusBar->showMessage(tr("Connected to %1 , <UserName>: %2").arg(ssh.host()).arg(ssh.user()));
-        QString cmdstr = cfg->value("cmd").toString();
-        ssh.loginInteractiveShell();
-        if(!cmdstr.isEmpty())
-            ssh.add2ShellCommand(cfg->value("cmd").toString());
-    });
-    connect(ui->setting_btn,&QPushButton::clicked,[=](){
+    connect(ui->btnSettings,&QPushButton::clicked,[=](){
         QDialog dialog;
         Ui::Dialog setting_ui;
         setting_ui.setupUi(&dialog);
@@ -63,6 +43,7 @@ MainWindow::MainWindow(QWidget *parent) :
         setting_ui.passwd->setText(cfg->value("passwd","").toString());
         setting_ui.cmd->setText(cfg->value("cmd",LOGIN_SHELL_CMD_STR).toString());
         setting_ui.exitCmd->setText(cfg->value("exitCmd",LOGOUT_SHELL_CMD_STR).toString());
+        setting_ui.uploadDir->setText(cfg->value("uploadDir","/tmp/").toString());
         if(dialog.exec()==QDialog::Accepted){
             cfg->setValue("hostip",setting_ui.hostip->text());
             cfg->setValue("port",setting_ui.port->text());
@@ -70,26 +51,27 @@ MainWindow::MainWindow(QWidget *parent) :
             cfg->setValue("passwd",setting_ui.passwd->text());
             cfg->setValue("cmd",setting_ui.cmd->text());
             cfg->setValue("exitCmd",setting_ui.exitCmd->text());
+            cfg->setValue("uploadDir",setting_ui.uploadDir->text()+"/");
         }
     });
     ui->textEdit->hide();
-    ui->cmd_edit->hide();
+    ui->editCmd->hide();
     ui->frame->hide();
     QStringList strs = cfg->value("cmdhistory","ls").toStringList();
-    auto cmdcompleter = new QCompleter(strs, ui->cmd_edit);
+    auto cmdcompleter = new QCompleter(strs, ui->editCmd);
     cmdcompleter->setCaseSensitivity(Qt::CaseInsensitive);
-    ui->cmd_edit->setCompleter(cmdcompleter);
+    ui->editCmd->setCompleter(cmdcompleter);
 }
 
 MainWindow::~MainWindow()
 {
-    cfg->setValue("cmdhistory",dynamic_cast<QStringListModel *>(ui->cmd_edit->completer()->model())->stringList());
+    cfg->setValue("cmdhistory",dynamic_cast<QStringListModel *>(ui->editCmd->completer()->model())->stringList());
     ui->vncView->disconnectFromVncServer();
     ssh.disconnectFromHost();
     delete ui;
 }
 
-void MainWindow::on_connect_btn_pressed()
+void MainWindow::on_btnConnect_pressed()
 {
     if(!ssh.isLoggedIn())
     {
@@ -102,12 +84,37 @@ void MainWindow::on_connect_btn_pressed()
             return;
         }
         ssh.setConnectHost(cfg->value("hostip").toString());
+
+        disconnect(&ssh, &QSshSocket::commandExecuted, 0, 0);
+        connect(&ssh, &QSshSocket::commandExecuted, this, [=](QString s1,QString s2){
+            ui->textEdit->setTextColor(Qt::green);
+            if(!s1.isEmpty())
+                ui->textEdit->append(ssh.user()+"@"+ssh.host()+">>"+s1);
+            ui->textEdit->setTextColor(Qt::white);
+            if(!s2.isEmpty())
+                ui->textEdit->append(s2);
+            ui->textEdit->moveCursor(QTextCursor::End);
+            if(s2.contains("connect2vnc")){
+                ui->vncView->connectToVncServer(cfg->value("hostip").toString(), "");
+                ui->vncView->startFrameBufferUpdate();
+                ui->btnRemoteCtrl->setText("断开远程");
+                ui->btnRemoteCtrl->setEnabled(true);
+            }
+        });
+        disconnect(&ssh, &QSshSocket::loginSuccessful, 0, 0);
+        connect(&ssh,&QSshSocket::loginSuccessful,this,[=](){
+            ui->statusBar->showMessage(tr("Connected to %1 , <UserName>: %2").arg(ssh.host()).arg(ssh.user()));
+            QString cmdstr = cfg->value("cmd").toString();
+            ssh.clearShellCmd();
+            if(!cmdstr.isEmpty())
+                ssh.add2ShellCommand(cfg->value("cmd").toString());
+        });
         ssh.login(username, passwd);
     }
 }
 
 
-void MainWindow::on_disconnect_btn_pressed()
+void MainWindow::on_btnDisconnect_pressed()
 {
     if(ui->vncView->isConnectedToServer())
         ui->vncView->disconnectFromVncServer();
@@ -115,50 +122,91 @@ void MainWindow::on_disconnect_btn_pressed()
     ui->statusBar->showMessage(tr("disconnected"));
 }
 
-void MainWindow::on_cmd_edit_returnPressed()
+void MainWindow::on_editCmd_returnPressed()
 {
     if(ssh.isLoggedIn())
-        ssh.add2ShellCommand(ui->cmd_edit->text());
-    QStringList strs = dynamic_cast<QStringListModel *>(ui->cmd_edit->completer()->model())->stringList();
-    if(!strs.contains(ui->cmd_edit->text()))
+        ssh.add2ShellCommand(ui->editCmd->text());
+    QStringList strs = dynamic_cast<QStringListModel *>(ui->editCmd->completer()->model())->stringList();
+    if(!strs.contains(ui->editCmd->text()))
     {
         if(strs.size()>100)
             strs.pop_front();
-        strs << ui->cmd_edit->text();
-        dynamic_cast<QStringListModel *>(ui->cmd_edit->completer()->model())->setStringList(strs);
+        strs << ui->editCmd->text();
+        dynamic_cast<QStringListModel *>(ui->editCmd->completer()->model())->setStringList(strs);
     }
 }
 
-void MainWindow::on_toolButton_cmd_pressed()
+void MainWindow::on_toolBtnCmd_pressed()
 {
-    bool show = ui->cmd_edit->isVisible();
-    ui->cmd_edit->setHidden(show);
+    bool show = ui->editCmd->isVisible();
+    ui->editCmd->setHidden(show);
     ui->textEdit->setHidden(show);
 }
 
-void MainWindow::on_toolButton_set_pressed()
+void MainWindow::on_toolBtnSet_pressed()
 {
     ui->frame->setVisible(!ui->frame->isVisible());
 }
 
 
-void MainWindow::on_restart_btn_clicked()
+void MainWindow::on_btnRemoteCtrl_clicked()
 {
-    QString str = ui->restart_btn->text();
+    QString str = ui->btnRemoteCtrl->text();
     if(str == "断开远程"){
         if(ui->vncView->isConnectedToServer())
             ui->vncView->disconnectFromVncServer();
         if(!ssh.isLoggedIn())
             return;
         ssh.add2ShellCommand(cfg->value("exitCmd").toString());
-        ui->restart_btn->setText("远程控制");
+        ui->btnRemoteCtrl->setText("远程控制");
     }
     else{
         if(!ssh.isLoggedIn())
             return;
         if(!cfg->value("cmd").toString().isEmpty()){
             ssh.add2ShellCommand(cfg->value("cmd").toString());
-            ui->restart_btn->setEnabled(false);
+            ui->btnRemoteCtrl->setEnabled(false);
         }
     }
+}
+
+void MainWindow::on_btnUpload_clicked()
+{
+    if(!ssh.isLoggedIn()){
+        ui->statusBar->showMessage("请先连接上再传输.");
+        return;
+    }
+    QStringList files = QFileDialog::getOpenFileNames(this);
+    bool txOver=false;
+    connect(&ssh, &QSshSocket::pushSuccessful, this, [&](QString srcFile, QString dstFile){
+        ui->textEdit->setTextColor(Qt::white);
+        if(!dstFile.isEmpty()){
+            ui->textEdit->append(srcFile + "--->" + dstFile + ":\tuploading 100%,tx done!");
+        }
+        else{
+            ui->textEdit->setTextColor(Qt::red);
+            ui->textEdit->append(srcFile + "--->" + dstFile + ":\tuploading error!");
+        }
+        ui->textEdit->moveCursor(QTextCursor::End);
+        txOver = true;
+    });
+    foreach (auto file, files) {
+        txOver = false;
+        QFileInfo fi(file);
+        ui->textEdit->setTextColor(Qt::green);
+        ui->textEdit->append(ssh.user()+"@"+ssh.host()+">>");
+        ui->textEdit->setTextColor(Qt::blue);
+        if(!file.isEmpty()){
+            ui->textEdit->append("ready to upload " + fi.fileName() + ",wait for a moment!");
+        }
+        ui->textEdit->moveCursor(QTextCursor::End);
+        ssh.pushFile(file, cfg->value("uploadDir").toString()+fi.fileName());
+        while (!txOver && ssh.isLoggedIn()) {
+            qApp->processEvents();
+            usleep(1000);
+        }
+    }
+    this->disconnect(&ssh, &QSshSocket::pushSuccessful, 0, 0);
+    ui->textEdit->setTextColor(Qt::green);
+    ui->textEdit->append(ssh.user()+"@"+ssh.host()+">>");
 }

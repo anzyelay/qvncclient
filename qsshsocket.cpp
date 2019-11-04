@@ -290,167 +290,206 @@ int QSshSocket::executeLogin(void)
     return worked;
 }
 
+int QSshSocket::executeScpPush(void)
+{
+    // attempt to create new scp from ssh session.
+    ssh_scp scpSession = ssh_scp_new(m_session,SSH_SCP_WRITE, m_currentOperation.remotePath.toUtf8().data());
+    // if creation failed, return
+    if (scpSession == NULL)
+    {
+        error(SocketError);
+        return SSH_ERROR;
+    }
+    // attempt to initialize new scp session.
+    int scpInitialized = ssh_scp_init(scpSession);
+    // if failed, close scp session and return.
+    if(scpInitialized != SSH_OK)
+    {
+        ssh_scp_close(scpSession);
+        ssh_scp_free(scpSession);
+        error(ScpChannelCreationError);
+        return SSH_ERROR;
+    }
+
+    // open the local file and check to make sure it exists
+    // if not, close scp session and return.
+    QFile file(m_currentOperation.localPath);
+    if (!file.exists())
+    {
+        ssh_scp_close(scpSession);
+        ssh_scp_free(scpSession);
+        error(ScpFileNotCreatedError);
+        return SSH_ERROR;
+    }
+
+    // if the file does exist, read all contents as bytes
+    file.open(QIODevice::ReadOnly);
+    QByteArray buffer =file.readAll();
+    file.close();
+
+    // attempt to authorize pushing bytes over scp socket
+    // if this fails, close scp session and return.
+    if (ssh_scp_push_file(scpSession, m_currentOperation.remotePath.toUtf8().data(), buffer.size(), S_IRUSR | S_IWUSR) != SSH_OK)
+    {
+        ssh_scp_close(scpSession);
+        ssh_scp_free(scpSession);
+        error(ScpPushRequestError);
+        return SSH_ERROR;
+    }
+
+    // once authorized to push bytes over scp socket, start writing
+    // if an error is returned,  close scp session and return.
+    if ( ssh_scp_write(scpSession,buffer.data(), buffer.size()) != SSH_OK)
+    {
+        ssh_scp_close(scpSession);
+        ssh_scp_free(scpSession);
+        error(ScpWriteError);
+        return SSH_ERROR;
+    }
+
+    // close scp session and return.
+    ssh_scp_close(scpSession);
+    ssh_scp_free(scpSession);
+    return SSH_OK;
+
+}
+
+int QSshSocket::executeScpPull(void)
+{
+    ssh_scp scpSession = ssh_scp_new(m_session,SSH_SCP_READ, m_currentOperation.remotePath.toUtf8().data());
+    if (scpSession == NULL){
+        error(ScpChannelCreationError);
+        return SSH_ERROR;
+    }
+
+    // attempt to initialize new scp session.
+    int scpInitialized = ssh_scp_init(scpSession);
+    if(scpInitialized != SSH_OK)
+    {
+        ssh_scp_close(scpSession);
+        ssh_scp_free(scpSession);
+        error(ScpChannelCreationError);
+        return SSH_ERROR;
+    }
+
+
+    // attempt to authorize new scp pull
+    if (ssh_scp_pull_request(scpSession) != SSH_SCP_REQUEST_NEWFILE)
+    {
+        ssh_scp_close(scpSession);
+        ssh_scp_free(scpSession);
+        error(ScpPullRequestError);
+        return SSH_ERROR;
+    }
+
+    // accept authorization
+    ssh_scp_accept_request(scpSession);
+
+
+    // get remote file size
+    int size = ssh_scp_request_get_size(scpSession);
+
+    // resize buffer, read remote file into buffer
+    QByteArray buffer;
+    buffer.resize(size);
+
+    // if an error happens while reading, close the scp session and return
+    if (ssh_scp_read(scpSession, buffer.data() , size) == SSH_ERROR)
+    {
+        ssh_scp_close(scpSession);
+        ssh_scp_free(scpSession);
+        error(ScpReadError);
+        return SSH_ERROR;
+    }
+
+    // loop until eof flag
+    if  (ssh_scp_pull_request(scpSession)  != SSH_SCP_REQUEST_EOF)
+    {
+        ssh_scp_close(scpSession);
+        ssh_scp_free(scpSession);
+        error(ScpReadError);
+        return SSH_ERROR;
+    }
+
+    //close scp session
+    ssh_scp_close(scpSession);
+    ssh_scp_free(scpSession);
+
+    // open up local file and write contents of buffer to it.
+    QFile file(m_currentOperation.localPath);
+    file.open(QIODevice::WriteOnly);
+    file.write(buffer);
+    file.close();
+
+    return SSH_OK;
+}
+
 void QSshSocket::run()
 {
     while(m_run)
     {
         {
             // authenticate connection with credentials
-            if (!m_loggedIn || m_currentOperation.type == Login){
+            if (!m_loggedIn && m_currentOperation.type == Login){
                 executeLogin();
-            }
-            else if(m_currentOperation.type == ShellLoop){
-                interactiveShellSession();
-                m_currentOperation.shellCommand.clear();
             }
             // if all ssh setup has been completed, check to see if we have any commands to execute
             else if (m_currentOperation.type == Command || m_currentOperation.type == WorkingDirectoryTest)
             {
-                QString response;
-//                int rc = executeShellCmd(m_currentOperation.adminCommand, response);
-                int rc = executeOneRemoteCmd(m_currentOperation.adminCommand, response);
-                if(rc == SSH_OK){
-                    if (m_currentOperation.type == WorkingDirectoryTest)
-                    {
+                if(!m_currentOperation.adminCommand.isEmpty()){
+                    QString response;
+                    int rc = executeOneRemoteCmd(m_currentOperation.adminCommand, response);
+                    if(rc == SSH_OK){
+                        if (m_currentOperation.type == WorkingDirectoryTest)
+                        {
                         response.replace("\n","");
                         if (response == "exists")
                             m_workingDirectory = m_nextWorkingDir;
                         m_nextWorkingDir = ".";
                         emit workingDirectorySet(m_workingDirectory);
-                    }
-                    else
+                        }
+                        else
                         emit commandExecuted( m_currentOperation.command, response);
+                    }
+                    m_currentOperation.adminCommand.clear();
+                }
+                else {
+                    msleep(10);
                 }
             }
             // if all ssh setup has been completed, check to see if we have any file transfers to execute
             else if (m_currentOperation.type == Pull)
             {
-                ssh_scp scpSession = ssh_scp_new(m_session,SSH_SCP_READ, m_currentOperation.remotePath.toUtf8().data());
-                if (scpSession == NULL)
-                    error(ScpChannelCreationError);
-
-                // attempt to initialize new scp session.
-                int scpInitialized = ssh_scp_init(scpSession);
-                if(scpInitialized != SSH_OK)
-                {
-                    ssh_scp_close(scpSession);
-                    ssh_scp_free(scpSession);
-                    error(ScpChannelCreationError);
+                if(!m_currentOperation.localPath.isEmpty() && !m_currentOperation.remotePath.isEmpty()){
+                    if(executeScpPull()==SSH_OK)
+                        emit pullSuccessful(m_currentOperation.localPath,m_currentOperation.remotePath);
+                    else {
+                        emit pullSuccessful(m_currentOperation.localPath, NULL);
+                    }
+                    m_currentOperation.localPath.clear();
+                    m_currentOperation.remotePath.clear();
                 }
-
-
-                // attempt to authorize new scp pull
-                if (ssh_scp_pull_request(scpSession) != SSH_SCP_REQUEST_NEWFILE)
-                {
-                    ssh_scp_close(scpSession);
-                    ssh_scp_free(scpSession);
-                    error(ScpPullRequestError);
+                else {
+                    msleep(10);
                 }
-
-                // accept authorization
-                ssh_scp_accept_request(scpSession);
-
-
-                // get remote file size
-                int size = ssh_scp_request_get_size(scpSession);
-
-                // resize buffer, read remote file into buffer
-                QByteArray buffer;
-                buffer.resize(size);
-
-                // if an error happens while reading, close the scp session and return
-                if (ssh_scp_read(scpSession, buffer.data() , size) == SSH_ERROR)
-                {
-                    ssh_scp_close(scpSession);
-                    ssh_scp_free(scpSession);
-                    error(ScpReadError);
-                }
-
-                // loop until eof flag
-                if  (ssh_scp_pull_request(scpSession)  != SSH_SCP_REQUEST_EOF)
-                {
-                    ssh_scp_close(scpSession);
-                    ssh_scp_free(scpSession);
-                    error(ScpReadError);
-                }
-
-                //close scp session
-                ssh_scp_close(scpSession);
-                ssh_scp_free(scpSession);
-
-                // open up local file and write contents of buffer to it.
-                QFile file(m_currentOperation.localPath);
-                file.open(QIODevice::WriteOnly);
-                file.write(buffer);
-                file.close();
-
-                emit pullSuccessful(m_currentOperation.localPath,m_currentOperation.remotePath);
-
             }
             else if (m_currentOperation.type == Push)
             {
-                // attempt to create new scp from ssh session.
-                ssh_scp scpSession = ssh_scp_new(m_session,SSH_SCP_WRITE, m_currentOperation.remotePath.toUtf8().data());
-
-                // if creation failed, return
-                if (scpSession == NULL)
-                    error(SocketError);
-
-
-                // attempt to initialize new scp session.
-                int scpInitialized = ssh_scp_init(scpSession);
-
-
-                // if failed, close scp session and return.
-                if(scpInitialized != SSH_OK)
-                {
-                    ssh_scp_close(scpSession);
-                    ssh_scp_free(scpSession);
-                    error(ScpChannelCreationError);
+                if(!m_currentOperation.localPath.isEmpty() && !m_currentOperation.remotePath.isEmpty()){
+                    if(executeScpPush()==SSH_OK)
+                        emit pushSuccessful(m_currentOperation.localPath, m_currentOperation.remotePath);
+                    else
+                        emit pushSuccessful(m_currentOperation.localPath, NULL);
+                    m_currentOperation.localPath.clear();
+                    m_currentOperation.remotePath.clear();
                 }
-
-
-                // open the local file and check to make sure it exists
-                // if not, close scp session and return.
-                QFile file(m_currentOperation.localPath);
-                if (!file.exists())
-                {
-                    ssh_scp_close(scpSession);
-                    ssh_scp_free(scpSession);
-                    error(ScpFileNotCreatedError);
+                else {
+                    msleep(10);
                 }
-
-                // if the file does exist, read all contents as bytes
-                file.open(QIODevice::ReadOnly);
-                QByteArray buffer =file.readAll();
-                file.close();
-
-                // attempt to authorize pushing bytes over scp socket
-                // if this fails, close scp session and return.
-                if (ssh_scp_push_file(scpSession, m_currentOperation.remotePath.toUtf8().data(), buffer.size(), S_IRUSR | S_IWUSR) != SSH_OK)
-                {
-                    ssh_scp_close(scpSession);
-                    ssh_scp_free(scpSession);
-                    error(ScpPushRequestError);
-                }
-
-
-                // once authorized to push bytes over scp socket, start writing
-                // if an error is returned,  close scp session and return.
-                if ( ssh_scp_write(scpSession,buffer.data(), buffer.size()) != SSH_OK)
-                {
-
-                    ssh_scp_close(scpSession);
-                    ssh_scp_free(scpSession);
-                    error(ScpWriteError);
-                }
-
-
-                // close scp session and return.
-                ssh_scp_close(scpSession);
-                ssh_scp_free(scpSession);
-
-                emit pushSuccessful(m_currentOperation.localPath,m_currentOperation.remotePath);
+            }
+            else if(m_currentOperation.type == ShellLoop){
+                interactiveShellSession();
+                m_currentOperation.shellCommand.clear();
             }
             else {
                 msleep(10);
@@ -495,9 +534,9 @@ void QSshSocket::login(QString user, QString password)
     start();
     m_user = user;
     m_password = password;
+    m_loggedIn = false;
     m_currentOperation.type = Login;
     msleep(100);
-    m_currentOperation.type = Unkonw;
 }
 void QSshSocket::setTimeout(long timeout)
 {
@@ -513,12 +552,10 @@ void QSshSocket::executeCommand(QString command)
     m_currentOperation.command = command;
     m_currentOperation.type = Command;
     msleep(100);
-    m_currentOperation.type = Unkonw;
 }
 void QSshSocket::add2ShellCommand(QString command)
 {
-    if(m_currentOperation.type != ShellLoop)
-        return;
+    m_currentOperation.type = ShellLoop;
     m_currentOperation.shellCommand << command.split(";", QString::SkipEmptyParts);
 }
 
@@ -531,7 +568,6 @@ void QSshSocket::pullFile(QString localPath, QString remotePath)
         m_currentOperation.remotePath = m_workingDirectory + "/" + remotePath;
     m_currentOperation.type = Pull;
     msleep(100);
-    m_currentOperation.type = Unkonw;
 }
 
 void QSshSocket::pushFile(QString localPath, QString remotePath)
@@ -543,7 +579,6 @@ void QSshSocket::pushFile(QString localPath, QString remotePath)
         m_currentOperation.remotePath = m_workingDirectory + "/" + remotePath;
     m_currentOperation.type = Push;
     msleep(100);
-    m_currentOperation.type = Unkonw;
 }
 
 void QSshSocket::setWorkingDirectory(QString path)
@@ -552,7 +587,6 @@ void QSshSocket::setWorkingDirectory(QString path)
     m_currentOperation.adminCommand = "[ -d " + m_nextWorkingDir +" ] && echo 'exists'";
     m_currentOperation.type = WorkingDirectoryTest;
     msleep(100);
-    m_currentOperation.type = Unkonw;
 }
 
 bool QSshSocket::isLoggedIn()
