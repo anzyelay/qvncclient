@@ -18,6 +18,8 @@ public:
     explicit MainWindow(QWidget *parent = 0);
     ~MainWindow();
 
+protected:
+    bool eventFilter(QObject *obj, QEvent *e);
 private slots:
     void on_btnConnect_pressed();
 

@@ -43,7 +43,7 @@ static const mode_t MS_MODE_MASK = 0x0000ffff;           ///< low word
 */
 
 QSshSocket::QSshSocket(QObject * parent )
-    :QThread(parent)
+        :QThread(parent)
 {
     m_host = "";
     m_user = "";
@@ -85,6 +85,17 @@ int QSshSocket::interactiveShellSession(void)
         ssh_channel_free(channel);
         return rc;
     }
+
+    rc = ssh_channel_request_pty(channel);
+    if (rc != SSH_OK){
+        ssh_channel_close(channel);
+        ssh_channel_free(channel);
+        return rc;
+    }
+//    rc = ssh_channel_change_pty_size(channel, 80, 24);
+
+//    rc = ssh_channel_request_x11(channel, 0, NULL, NULL, 0);
+
     rc = ssh_channel_request_shell(channel);
     if (rc != SSH_OK){
         ssh_channel_close(channel);
@@ -95,8 +106,8 @@ int QSshSocket::interactiveShellSession(void)
     ssh_channel_write(channel,"\n", 1);
     msleep(100);
     while (m_run && m_currentOperation.type == ShellLoop
-           && ssh_channel_is_open(channel)
-           && !ssh_channel_is_eof(channel)) {
+                    && ssh_channel_is_open(channel)
+                    && !ssh_channel_is_eof(channel)) {
         totalBytes = 0;
         do{
             nbytes = ssh_channel_read_timeout(channel, &buffer[totalBytes], sizeof(buffer) - totalBytes, 0, 200);
@@ -116,10 +127,16 @@ int QSshSocket::interactiveShellSession(void)
         }while(nbytes!=0);
         if(!curCmdStr.isEmpty() || totalBytes > 0 ){
             QString response  = QString::fromUtf8(buffer, totalBytes);
-//            write(1, buffer, totalBytes);
-            memset(buffer, 0, sizeof(buffer));
+            int curCmdSize =  curCmdStr.size();
+            if(curCmdStr == response.mid(0, curCmdSize) ){
+                response = response.mid(curCmdSize+2);// remove cmd,keep the execution info left
+            }
+            const QRegExp rx(R"(\033\]0\;(.*)\007)");
+            response = response.remove(rx);
+//            write(1, response.toLocal8Bit().data(), totalBytes);
             emit commandExecuted(curCmdStr, response);
             curCmdStr.clear();
+            memset(buffer, 0, totalBytes);
         }
         if ( m_currentOperation.shellCommand.isEmpty() )
         {
@@ -127,16 +144,28 @@ int QSshSocket::interactiveShellSession(void)
             continue;
         }
         curCmdStr = m_currentOperation.shellCommand.takeFirst();
+        if(curCmdStr.isEmpty())
+            continue;
         // add exit cmd to shellCmd if want to exit interactive shell
         if(curCmdStr=="exit"){
             break;
         }
-        nbytes = curCmdStr.size();
-        if (nbytes > 0) {
+        else if(curCmdStr=="CTRL-C"){
+            curCmdStr = "\x03";
+            nwritten = ssh_channel_write(channel, curCmdStr.toUtf8().data(), curCmdStr.size());
+        }
+        else{
+            nbytes = curCmdStr.size();
             nwritten = ssh_channel_write(channel, curCmdStr.toUtf8().data(), nbytes);
             if (nwritten != nbytes) break;
             nwritten = ssh_channel_write(channel,"\n", 1);
         }
+        int position = curCmdStr.indexOf(QRegExp("sleep\0([\d]+)"));
+        if(position != -1){
+            int timeout = curCmdStr.mid(position+6).toInt();
+            sleep(timeout);
+        }
+        msleep(200);
     }
     ssh_channel_send_eof(channel);
     ssh_channel_close(channel);
@@ -216,7 +245,7 @@ int QSshSocket::executeLogin(void)
     ssh_options_set(m_session, SSH_OPTIONS_HOST, m_host.toUtf8().data());
     if(m_user.isEmpty()) m_user = "root";
     ssh_options_set(m_session, SSH_OPTIONS_USER, m_user.toUtf8().data());
-//    ssh_options_set(m_session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
+    //    ssh_options_set(m_session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
     if(m_timeout != -1)
         ssh_options_set(m_session, SSH_OPTIONS_TIMEOUT, &m_timeout);
     ssh_options_set(m_session, SSH_OPTIONS_PORT, &m_port);
@@ -442,14 +471,14 @@ void QSshSocket::run()
                     if(rc == SSH_OK){
                         if (m_currentOperation.type == WorkingDirectoryTest)
                         {
-                        response.replace("\n","");
-                        if (response == "exists")
-                            m_workingDirectory = m_nextWorkingDir;
-                        m_nextWorkingDir = ".";
-                        emit workingDirectorySet(m_workingDirectory);
+                            response.replace("\n","");
+                            if (response == "exists")
+                                m_workingDirectory = m_nextWorkingDir;
+                            m_nextWorkingDir = ".";
+                            emit workingDirectorySet(m_workingDirectory);
                         }
                         else
-                        emit commandExecuted( m_currentOperation.command, response);
+                            emit commandExecuted( m_currentOperation.command, response);
                     }
                     m_currentOperation.adminCommand.clear();
                 }

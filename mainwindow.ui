@@ -74,10 +74,10 @@
             <enum>QFrame::Raised</enum>
            </property>
            <layout class="QGridLayout" name="gridLayout_3">
-            <item row="4" column="1">
-             <widget class="QPushButton" name="btnSettings">
+            <item row="3" column="1">
+             <widget class="QPushButton" name="btnDisconnect">
               <property name="text">
-               <string>设置(&amp;S)</string>
+               <string>下线(&amp;D)</string>
               </property>
               <property name="autoDefault">
                <bool>true</bool>
@@ -90,10 +90,26 @@
               </property>
              </widget>
             </item>
-            <item row="3" column="1">
-             <widget class="QPushButton" name="btnDisconnect">
+            <item row="2" column="1">
+             <widget class="QPushButton" name="btnRemoteCtrl">
               <property name="text">
-               <string>下线(&amp;D)</string>
+               <string>远程控制</string>
+              </property>
+              <property name="autoDefault">
+               <bool>true</bool>
+              </property>
+              <property name="default">
+               <bool>false</bool>
+              </property>
+              <property name="flat">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="1">
+             <widget class="QPushButton" name="btnSettings">
+              <property name="text">
+               <string>设置(&amp;S)</string>
               </property>
               <property name="autoDefault">
                <bool>true</bool>
@@ -122,6 +138,26 @@
               </property>
              </widget>
             </item>
+            <item row="0" column="1">
+             <spacer name="verticalSpacer">
+              <property name="orientation">
+               <enum>Qt::Vertical</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>20</width>
+                <height>40</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item row="6" column="1">
+             <widget class="QPushButton" name="btnUpload">
+              <property name="text">
+               <string>上传</string>
+              </property>
+             </widget>
+            </item>
             <item row="1" column="1">
              <widget class="QPushButton" name="btnConnect">
               <property name="text">
@@ -138,47 +174,11 @@
               </property>
              </widget>
             </item>
-            <item row="0" column="1">
-             <spacer name="verticalSpacer">
-              <property name="orientation">
-               <enum>Qt::Vertical</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>20</width>
-                <height>40</height>
-               </size>
-              </property>
-             </spacer>
-            </item>
-            <item row="2" column="1">
-             <widget class="QPushButton" name="btnRemoteCtrl">
-              <property name="text">
-               <string>断开远程</string>
-              </property>
-              <property name="autoDefault">
-               <bool>true</bool>
-              </property>
-              <property name="default">
-               <bool>false</bool>
-              </property>
-              <property name="flat">
-               <bool>false</bool>
-              </property>
-             </widget>
-            </item>
-            <item row="6" column="1">
-             <widget class="QPushButton" name="btnUpload">
-              <property name="text">
-               <string>上传</string>
-              </property>
-             </widget>
-            </item>
            </layout>
           </widget>
          </item>
          <item row="2" column="0">
-          <widget class="QTextEdit" name="textEdit">
+          <widget class="QAnnTextEdit" name="textEdit">
            <property name="styleSheet">
             <string notr="true">background-color: rgba(85, 87, 83,200);
 color: rgb(255, 255, 255);
@@ -296,6 +296,11 @@ color: rgb(255, 255, 255);
    <extends>QWidget</extends>
    <header>qvncclientwidget.h</header>
    <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>QAnnTextEdit</class>
+   <extends>QTextEdit</extends>
+   <header location="global">qanntextedit.h</header>
   </customwidget>
  </customwidgets>
  <resources/>

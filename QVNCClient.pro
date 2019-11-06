@@ -3,15 +3,19 @@ QT       += core gui network
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
+CONFIG += C++11
+
 TARGET = QVNCClient
 TEMPLATE = app
 
 SOURCES += main.cpp\
         mainwindow.cpp \
+    qanntextedit.cpp \
     qsshsocket.cpp \
     qvncclientwidget.cpp
 
 HEADERS  += mainwindow.h \
+    qanntextedit.h \
     qsshsocket.h \
     qvncclientwidget.h
 
