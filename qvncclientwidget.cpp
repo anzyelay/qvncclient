@@ -3,7 +3,7 @@
 QVNCClientWidget::QVNCClientWidget(QWidget *parent) : QWidget(parent)
 {
     isFrameBufferUpdating = true;
-    isScaled = true;
+    isScaled = false;
     setMouseTracking(true);
 }
 
