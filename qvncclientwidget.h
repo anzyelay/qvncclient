@@ -52,6 +52,7 @@ private slots:
 
 signals:
     void frameBufferUpdated();
+    void connected();
 
 private:
     QImage screen;

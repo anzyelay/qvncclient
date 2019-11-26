@@ -209,6 +209,7 @@ clientinit:
     sendSetPixelFormat();
     sendSetEncodings();
     connect(&socket, SIGNAL(readyRead()), this, SLOT(onServerMessage()));
+    emit connected();
     return true;
 }
 

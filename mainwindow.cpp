@@ -2,17 +2,25 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <QCompleter>
+#include <QTimer>
 
 MainWindow::MainWindow(QWidget *parent) :
         QMainWindow(parent),
         ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
-    ui->vncView->connectToVncServer("192.168.200.166", "");
-//    ui->vncView->connectToVncServer("127.0.0.1", "");
-    ui->vncView->startFrameBufferUpdate();
-    ui->vncView->setFocus();
-    ui->vncView->grabKeyboard();
+    auto t = new QTimer(this);
+    connect(t, &QTimer::timeout, [=](){
+//        ui->vncView->connectToVncServer("192.168.200.166", "");
+        bool isconnect = ui->vncView->connectToVncServer("127.0.0.1", "");
+        if(isconnect){
+            ui->vncView->startFrameBufferUpdate();
+            ui->vncView->setFocus();
+            ui->vncView->grabKeyboard();
+            t->stop();
+        }
+    });
+    t->start(2000);
 }
 
 MainWindow::~MainWindow()
