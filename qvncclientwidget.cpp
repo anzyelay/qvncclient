@@ -200,8 +200,8 @@ clientinit:
     }
     else
     {
-        qDebug() << "Not connected to " << ip;
-        qDebug() << socket.errorString();
+//        qDebug() << "Not connected to " << ip;
+//        qDebug() << socket.errorString();
         return false;
     }
 

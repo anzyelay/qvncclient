@@ -5,7 +5,7 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += C++11
 
-TARGET = QVNCClient
+TARGET = dt_vnc
 TEMPLATE = app
 
 SOURCES += main.cpp\
@@ -29,6 +29,7 @@ FORMS    += mainwindow.ui \
 #        LIBS += -lws2_32 -lz
 #}
 #else:LIBS += -lssh
-
+target.path = /tmp
+INSTALLS += target
 
 

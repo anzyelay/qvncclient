@@ -11,16 +11,19 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->setupUi(this);
     auto t = new QTimer(this);
     connect(t, &QTimer::timeout, [=](){
+        if(ui->vncView->isConnectedToServer()) return;
+        ui->vncView->disconnectFromVncServer();
 //        ui->vncView->connectToVncServer("192.168.200.166", "");
         bool isconnect = ui->vncView->connectToVncServer("127.0.0.1", "");
         if(isconnect){
             ui->vncView->startFrameBufferUpdate();
             ui->vncView->setFocus();
-            ui->vncView->grabKeyboard();
+//            ui->vncView->grabKeyboard();
             t->stop();
+            t->start(5000);
         }
     });
-    t->start(2000);
+    t->start(200);
 }
 
 MainWindow::~MainWindow()
