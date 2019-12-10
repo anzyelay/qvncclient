@@ -1,4 +1,4 @@
-#include "qanntextedit.h"
+#include "qannconsole.h"
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "ui_dialog_setting.h"
@@ -56,15 +56,9 @@ MainWindow::MainWindow(QWidget *parent) :
         }
     });
     connect(&ssh, &QSshSocket::commandExecuted, this, [=](QString s1,QString s2){
-        if(!s1.isEmpty()){
-            ui->textEdit->setTextColor(Qt::green);
-            ui->textEdit->insertText(s1);
-        }
         if(!s2.isEmpty()){
-            ui->textEdit->setTextColor(Qt::white);
-            ui->textEdit->append(s2);
+            ui->console->append(s2);
         }
-        ui->textEdit->moveCursor(QTextCursor::End);
         if(s2.contains("connect2vnc")){
             ui->vncView->connectToVncServer(cfg->value("hostip").toString(), "");
             ui->vncView->startFrameBufferUpdate();
@@ -77,7 +71,7 @@ MainWindow::MainWindow(QWidget *parent) :
         ssh.clearShellCmd();
     });
 
-    ui->textEdit->hide();
+    ui->console->hide();
     ui->editCmd->hide();
     ui->frame->hide();
     QStringList strs = cfg->value("cmdhistory","ls").toStringList();
@@ -146,7 +140,7 @@ void MainWindow::on_toolBtnCmd_pressed()
 {
     bool show = ui->editCmd->isVisible();
     ui->editCmd->setHidden(show);
-    ui->textEdit->setHidden(show);
+    ui->console->setHidden(show);
 }
 
 void MainWindow::on_toolBtnSet_pressed()
@@ -187,25 +181,23 @@ void MainWindow::on_btnUpload_clicked()
     bool txOver=false;
     int txDoneCnt = 0;
     connect(&ssh, &QSshSocket::pushSuccessful, this, [&](QString srcFile, QString dstFile){
-        ui->textEdit->setTextColor(Qt::blue);
+        ui->console->setTextColor(Qt::blue);
         if(!dstFile.isEmpty()){
-            ui->textEdit->append(srcFile + "--->" + dstFile + ":\tuploading 100%,tx done!");
+            ui->console->append(srcFile + "--->" + dstFile + ":\tuploading 100%,tx done!");
             txDoneCnt++;
         }
         else{
-            ui->textEdit->setTextColor(Qt::red);
-            ui->textEdit->append(srcFile + "--->" + dstFile + ":\tuploading error!");
+            ui->console->setTextColor(Qt::red);
+            ui->console->append(srcFile + "--->" + dstFile + ":\tuploading error!");
         }
-        ui->textEdit->moveCursor(QTextCursor::End);
         txOver = true;
     });
     foreach (auto file, files) {
         txOver = false;
         QFileInfo fi(file);
         if(!file.isEmpty()){
-            ui->textEdit->insertText("ready to upload " + fi.fileName() + ",wait for a moment!");
+            ui->console->insertText("ready to upload " + fi.fileName() + ",wait for a moment!");
         }
-        ui->textEdit->moveCursor(QTextCursor::End);
         ssh.pushFile(file, cfg->value("uploadDir").toString()+"/"+fi.fileName());
         while (!txOver && ssh.isLoggedIn()) {
             qApp->processEvents();
@@ -213,8 +205,8 @@ void MainWindow::on_btnUpload_clicked()
         }
     }
     this->disconnect(&ssh, &QSshSocket::pushSuccessful, 0, 0);
-    ui->textEdit->setTextColor(Qt::green);
-    ui->textEdit->append(tr("======总共上传了 %1 个文件======").arg(txDoneCnt));
+    ui->console->setTextColor(Qt::green);
+    ui->console->append(tr("======总共上传了 %1 个文件======").arg(txDoneCnt));
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *e)
@@ -222,9 +214,21 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e)
     if(e->type() == QKeyEvent::KeyPress ){
         QKeyEvent *keyevent = static_cast<QKeyEvent *>(e);
         if(keyevent->modifiers() == Qt::ControlModifier){
-            if( keyevent->key() == 	Qt::Key_C ){
+            switch (keyevent->key()) {
+            case Qt::Key_C:
                 ssh.add2ShellCommand("CTRL-C");
                 return true;
+                break;
+            case Qt::Key_L:
+                ssh.add2ShellCommand("clear");
+                return true;
+                break;
+            case Qt::Key_U:
+                ui->editCmd->clear();
+                return true;
+                break;
+            default:
+                break;
             }
         }
     }

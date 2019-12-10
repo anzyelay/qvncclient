@@ -1,11 +1,13 @@
-#include "qanntextedit.h"
+#include "qannconsole.h"
 #include <QFontDatabase>
+#include <QTextBlock>
+#include <QDebug>
 
-QAnnTextEdit::QAnnTextEdit(QWidget *parent) : QTextEdit(parent)
+QAnnConsole::QAnnConsole(QWidget *parent) : QTextEdit(parent)
 {
 
 }
-void QAnnTextEdit::parseEscapeSequence(int attribute, QListIterator< QString > & i, QTextCharFormat & textCharFormat, QTextCharFormat const & defaultTextCharFormat)
+void QAnnConsole::parseAnsiEscapeSequence(int attribute, QListIterator< QString > & i, QTextCharFormat & textCharFormat, QTextCharFormat const & defaultTextCharFormat)
 {
     switch (attribute) {
     case 0 : { // Normal/Default (reset all attributes)
@@ -225,10 +227,10 @@ void QAnnTextEdit::parseEscapeSequence(int attribute, QListIterator< QString > &
                 Q_ASSERT(ok);
                 switch (index) {
                 case 0x00 ... 0x07 : { // 0x00-0x07:  standard colors (as in ESC [ 30..37 m)
-                    return parseEscapeSequence(index - 0x00 + 30, i, textCharFormat, defaultTextCharFormat);
+                    return parseAnsiEscapeSequence(index - 0x00 + 30, i, textCharFormat, defaultTextCharFormat);
                 }
                 case 0x08 ... 0x0F : { // 0x08-0x0F:  high intensity colors (as in ESC [ 90..97 m)
-                    return parseEscapeSequence(index - 0x08 + 90, i, textCharFormat, defaultTextCharFormat);
+                    return parseAnsiEscapeSequence(index - 0x08 + 90, i, textCharFormat, defaultTextCharFormat);
                 }
                 case 0x10 ... 0xE7 : { // 0x10-0xE7:  6*6*6=216 colors: 16 + 36*r + 6*g + b (0≤r,g,b≤5)
                     index -= 0x10;
@@ -339,10 +341,10 @@ void QAnnTextEdit::parseEscapeSequence(int attribute, QListIterator< QString > &
                 Q_ASSERT(ok);
                 switch (index) {
                 case 0x00 ... 0x07 : { // 0x00-0x07:  standard colors (as in ESC [ 40..47 m)
-                    return parseEscapeSequence(index - 0x00 + 40, i, textCharFormat, defaultTextCharFormat);
+                    return parseAnsiEscapeSequence(index - 0x00 + 40, i, textCharFormat, defaultTextCharFormat);
                 }
                 case 0x08 ... 0x0F : { // 0x08-0x0F:  high intensity colors (as in ESC [ 100..107 m)
-                    return parseEscapeSequence(index - 0x08 + 100, i, textCharFormat, defaultTextCharFormat);
+                    return parseAnsiEscapeSequence(index - 0x08 + 100, i, textCharFormat, defaultTextCharFormat);
                 }
                 case 0x10 ... 0xE7 : { // 0x10-0xE7:  6*6*6=216 colors: 16 + 36*r + 6*g + b (0≤r,g,b≤5)
                     index -= 0x10;
@@ -473,58 +475,178 @@ void QAnnTextEdit::parseEscapeSequence(int attribute, QListIterator< QString > &
     }
     }
 }
-#include<QDebug>
-QString QAnnTextEdit::terminalToText(QString const & text)
+void QAnnConsole::insertAnsiEscapeSequence(QString const & text)
 {
     QString m_text(text);
-    QRegExp const escapeSequenceExpression(R"(\033\[([\d;]+)m|\033\[([Km]+))");
-    QTextCharFormat const defaultTextCharFormat = this->currentCharFormat();
-    int offset = escapeSequenceExpression.indexIn(m_text);
-    if(offset == -1){
-        return m_text;
+    QRegExp const escapeSequenceExpression(R"(\033\[([\d;\?]*)([a-zA-Z]{1}))");
+    if(escapeSequenceExpression.indexIn(m_text, 0)==-1){
+        insertPlainText(m_text);
+        return moveCursor(QTextCursor::End);
     }
-    QTextDocument document;
-    QTextCursor cursor(&document);
+    QTextCharFormat const defaultTextCharFormat = currentCharFormat();
+    int previousOffset = 0, offset;
+    QTextCursor cursor(this->textCursor());
     cursor.beginEditBlock();
-    cursor.insertText(m_text.mid(0, offset));
+    cursor.movePosition(QTextCursor::End);
+    int savedCursorPos;
     QTextCharFormat textCharFormat = defaultTextCharFormat;
-    while ( offset >= 0 ) {
-        int previousOffset = offset + escapeSequenceExpression.matchedLength();
-        QString capstr = escapeSequenceExpression.cap(1); // ([\d;]+)
-        if(capstr.isEmpty()){
-            capstr = QString::number(escapeSequenceExpression.cap(2).data()->toLatin1()); // ([Km]+)
+    while ( (offset = escapeSequenceExpression.indexIn(m_text, previousOffset))>=0 ) {
+        if(offset!=previousOffset){
+            const QString text2insert = m_text.mid(previousOffset, offset - previousOffset);
+            if(!cursor.atEnd()){
+                cursor.movePosition(QTextCursor::Right,QTextCursor::KeepAnchor,text2insert.length());
+            }
+            cursor.insertText(text2insert, textCharFormat);
         }
-        QStringList capturedTexts = capstr.split(";");
-        QListIterator< QString > i(capturedTexts);
-        while (i.hasNext()) {
-            bool ok = false;
-            int attribute = i.next().toInt(&ok);
-            Q_ASSERT(ok);
-            parseEscapeSequence(attribute, i, textCharFormat, defaultTextCharFormat);
+        previousOffset = offset + escapeSequenceExpression.matchedLength();
+        QString capstr = escapeSequenceExpression.cap(1); // ([\d;]*)
+        const char capAction = escapeSequenceExpression.cap(2).data()->toLatin1();// ([a-zA-Z])
+        bool ok = false;
+        switch (capAction) {
+        case 'm': {
+            QStringList capturedTexts = capstr.split(";");
+            QListIterator< QString > i(capturedTexts);
+            while (i.hasNext()) {
+                int attribute = i.next().toInt(&ok);
+                if(!ok) attribute = 0;
+                parseAnsiEscapeSequence(attribute, i, textCharFormat, defaultTextCharFormat);
+            }
+            break;
         }
-        offset = escapeSequenceExpression.indexIn(m_text, previousOffset);
-        if (offset < 0) {
-            cursor.insertText(m_text.mid(previousOffset), textCharFormat);
-        } else {
-            cursor.insertText(m_text.mid(previousOffset, offset - previousOffset), textCharFormat);
+        case 'K':{ // clears all characters form the cursor to the end of the line
+            cursor.movePosition(QTextCursor::EndOfLine, QTextCursor::KeepAnchor);
+            cursor.removeSelectedText();
+            break;
+        }
+        case 'J':{ // clears Display
+            if(capstr == '2'){
+//                this->document()->clear();
+                cursor.select(QTextCursor::Document);
+                cursor.removeSelectedText();
+            }
+            break;
+        }
+        case 'A':{ //
+            int val = capstr.toInt(&ok);
+            if(ok)
+                cursor.movePosition(QTextCursor::Up, QTextCursor::MoveAnchor, val);
+            break;
+        }
+        case 'B':{ //
+            int val = capstr.toInt(&ok);
+            if(ok)
+                cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor, val);
+            break;
+        }
+        case 'C':{ //
+            int val = capstr.toInt(&ok);
+            if(ok)
+                cursor.movePosition(QTextCursor::Left, QTextCursor::MoveAnchor, val);
+            break;
+        }
+        case 'D':{ //
+            int val = capstr.toInt(&ok);
+            if(ok)
+                cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, val);
+            break;
+        }
+        case 'd':{ //
+            int val = capstr.toInt(&ok);
+            if(ok){
+                cursor.setVerticalMovementX(val);
+            }
+            break;
+        }
+        case 'H':
+        case 'f':
+        { // move to special line,column
+            QStringList capturedTexts = capstr.split(";", QString::SkipEmptyParts);
+            int colu=0,line=0;
+            if(capturedTexts.size()==2){
+                line = capturedTexts.at(0).toInt();
+                colu = capturedTexts.at(1).toInt();
+                if(line > cursor.document()->lineCount()){
+                    cursor.insertText(QString(line-cursor.document()->lineCount(),QChar('\n')));
+                }
+                QTextBlock block = cursor.document()->findBlockByLineNumber(line-1);
+                int pos = block.position();
+                cursor.setPosition(pos);// move to the line
+                cursor.movePosition(QTextCursor::EndOfLine);
+                pos = cursor.columnNumber();
+                if(pos < colu){
+                    cursor.insertText(QString(colu-pos,QChar(' ')));
+                }
+                else{
+                    cursor.movePosition(QTextCursor::Left, QTextCursor::MoveAnchor, pos-colu);
+                }
+//                qDebug() << "line:" << line << "col:" << colu << "cur pos:" << pdoc->toRawText().size();
+//                qDebug() << pdoc->toRawText();
+            }
+            else if(capturedTexts.size()==0){
+                cursor.select(QTextCursor::Document);
+                cursor.removeSelectedText();
+            }
+            else{
+                qDebug() << "only has one args:" << capturedTexts;
+            }
+            break;
+        }
+        case 's':{ //
+            savedCursorPos = cursor.position();
+            break;
+        }
+        case 'u':{ //
+            cursor.setPosition(savedCursorPos);
+            break;
+        }
+        case 'h' :{ //
+            if( capstr == "?1049" ){
+                oldbuf = cursor.document()->toHtml();
+                cursor.document()->clear();
+            }
+            else if (capstr == "?25") {
+                textCharFormat.setFontWeight(QFont::Normal);
+            }
+            else if (capstr == "?12") {
+                textCharFormat.setFontWeight(QFont::Black);
+            }
+            break;
+        }
+        case 'l':{ //
+            if(capstr == "?1049"){
+                cursor.document()->clear();
+                cursor.document()->setHtml(oldbuf);
+            }
+            else if (capstr == "?25") {
+                textCharFormat.setFontWeight(QFont::Thin);
+            }
+            else if (capstr == "?12") {
+                textCharFormat.setFontWeight(QFont::Normal);
+            }
+            break;
+        }
+        default:
+            qDebug() << "no action for:" << escapeSequenceExpression.capturedTexts().first();
+            break;
         }
     }
+    cursor.insertText(m_text.mid(previousOffset), textCharFormat);
     cursor.setCharFormat(defaultTextCharFormat);
     cursor.endEditBlock();
-    return document.toHtml();
+    return moveCursor(QTextCursor::End);
 }
 
-void QAnnTextEdit::append(QString const & text)
+void QAnnConsole::append(QString const & text)
 {
-    return QTextEdit::append(terminalToText(text));
+    return insertAnsiEscapeSequence(text);
 }
 
-void QAnnTextEdit::setText(QString const & text)
+void QAnnConsole::setText(QString const & text)
 {
-    return setText(terminalToText(text));
+    return insertAnsiEscapeSequence(text);
 }
 
-void QAnnTextEdit::insertText(QString const & text)
+void QAnnConsole::insertText(QString const & text)
 {
-    return QTextEdit::insertPlainText(terminalToText(text));
+    return insertAnsiEscapeSequence(text);
 }

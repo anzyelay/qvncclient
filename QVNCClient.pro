@@ -10,12 +10,12 @@ TEMPLATE = app
 
 SOURCES += main.cpp\
         mainwindow.cpp \
-    qanntextedit.cpp \
+    qannconsole.cpp \
     qsshsocket.cpp \
     qvncclientwidget.cpp
 
 HEADERS  += mainwindow.h \
-    qanntextedit.h \
+    qannconsole.h \
     qsshsocket.h \
     qvncclientwidget.h
 

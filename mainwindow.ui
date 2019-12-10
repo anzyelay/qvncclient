@@ -178,7 +178,7 @@
           </widget>
          </item>
          <item row="2" column="0">
-          <widget class="QAnnTextEdit" name="textEdit">
+          <widget class="QAnnConsole" name="console">
            <property name="styleSheet">
             <string notr="true">background-color: rgba(85, 87, 83,200);
 color: rgb(255, 255, 255);
@@ -298,9 +298,9 @@ color: rgb(255, 255, 255);
    <container>1</container>
   </customwidget>
   <customwidget>
-   <class>QAnnTextEdit</class>
+   <class>QAnnConsole</class>
    <extends>QTextEdit</extends>
-   <header location="global">qanntextedit.h</header>
+   <header location="global">qannconsole.h</header>
   </customwidget>
  </customwidgets>
  <resources/>

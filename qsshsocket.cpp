@@ -127,11 +127,7 @@ int QSshSocket::interactiveShellSession(void)
         }while(nbytes!=0);
         if(!curCmdStr.isEmpty() || totalBytes > 0 ){
             QString response  = QString::fromUtf8(buffer, totalBytes);
-            int curCmdSize =  curCmdStr.size();
-            if(curCmdStr == response.mid(0, curCmdSize) ){
-                response = response.mid(curCmdSize+2);// remove cmd,keep the execution info left
-            }
-            const QRegExp rx(R"(\033\]0\;(.*)\007)");
+            const QRegExp rx(R"(\033\]0\;(.*)\007|\033\(B)");
             response = response.remove(rx);
 //            write(1, response.toLocal8Bit().data(), totalBytes);
             emit commandExecuted(curCmdStr, response);
