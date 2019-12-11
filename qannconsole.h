@@ -13,6 +13,7 @@ public slots:
     void setText(const QString &text);
     void insertText(const QString &text);
 protected:
+    friend QAnnConsole *operator<<(QAnnConsole *, const QString str);
 
 private:
     void parseAnsiEscapeSequence(int attribute, QListIterator<QString> &i, QTextCharFormat &textCharFormat, const QTextCharFormat &defaultTextCharFormat);

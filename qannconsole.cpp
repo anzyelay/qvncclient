@@ -650,3 +650,10 @@ void QAnnConsole::insertText(QString const & text)
 {
     return insertAnsiEscapeSequence(text);
 }
+
+QAnnConsole *operator<<(QAnnConsole *out , const QString str)
+{
+    out->append(str);
+    return out;
+}
+

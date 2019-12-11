@@ -57,7 +57,7 @@ MainWindow::MainWindow(QWidget *parent) :
     });
     connect(&ssh, &QSshSocket::commandExecuted, this, [=](QString s1,QString s2){
         if(!s2.isEmpty()){
-            ui->console->append(s2);
+            ui->console << s2;
         }
         if(s2.contains("connect2vnc")){
             ui->vncView->connectToVncServer(cfg->value("hostip").toString(), "");
@@ -181,6 +181,7 @@ void MainWindow::on_btnUpload_clicked()
     bool txOver=false;
     int txDoneCnt = 0;
     connect(&ssh, &QSshSocket::pushSuccessful, this, [&](QString srcFile, QString dstFile){
+        QColor defaultColor = ui->console->textColor();
         ui->console->setTextColor(Qt::blue);
         if(!dstFile.isEmpty()){
             ui->console->append(srcFile + "--->" + dstFile + ":\tuploading 100%,tx done!");
@@ -191,6 +192,7 @@ void MainWindow::on_btnUpload_clicked()
             ui->console->append(srcFile + "--->" + dstFile + ":\tuploading error!");
         }
         txOver = true;
+        ui->console->setTextColor(defaultColor);
     });
     foreach (auto file, files) {
         txOver = false;
@@ -205,8 +207,10 @@ void MainWindow::on_btnUpload_clicked()
         }
     }
     this->disconnect(&ssh, &QSshSocket::pushSuccessful, 0, 0);
+    QColor defaultColor = ui->console->textColor();
     ui->console->setTextColor(Qt::green);
     ui->console->append(tr("======总共上传了 %1 个文件======").arg(txDoneCnt));
+    ui->console->setTextColor(defaultColor);
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *e)
@@ -224,7 +228,8 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e)
                 return true;
                 break;
             case Qt::Key_U:
-                ui->editCmd->clear();
+                ui->editCmd->cursorBackward(true, ui->editCmd->cursorPosition());
+                ui->editCmd->backspace();
                 return true;
                 break;
             default:
