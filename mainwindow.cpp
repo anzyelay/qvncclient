@@ -232,6 +232,11 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e)
                 ui->editCmd->backspace();
                 return true;
                 break;
+            case Qt::Key_K:
+                ui->editCmd->cursorForward(true, ui->editCmd->text().size()-ui->editCmd->cursorPosition());
+                ui->editCmd->del();
+                return true;
+                break;
             default:
                 break;
             }
