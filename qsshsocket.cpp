@@ -105,6 +105,7 @@ int QSshSocket::interactiveShellSession(void)
     QString curCmdStr="login-shell";
     ssh_channel_write(channel,"\n", 1);
     msleep(100);
+    m_channel = channel;
     while (m_run && m_currentOperation.type == ShellLoop
                     && ssh_channel_is_open(channel)
                     && !ssh_channel_is_eof(channel)) {
@@ -127,7 +128,7 @@ int QSshSocket::interactiveShellSession(void)
         }while(nbytes!=0);
         if(!curCmdStr.isEmpty() || totalBytes > 0 ){
             QString response  = QString::fromUtf8(buffer, totalBytes);
-            const QRegExp rx(R"(\033\]0\;(.*)\007|\033\(B)");
+            const QRegExp rx(R"(\033\]0\;(.*)\007|\033\(B|\007)");//007 alarm
             response = response.remove(rx);
 //            write(1, response.toLocal8Bit().data(), totalBytes);
             emit commandExecuted(curCmdStr, response);
@@ -514,6 +515,7 @@ void QSshSocket::run()
             }
             else if(m_currentOperation.type == ShellLoop){
                 interactiveShellSession();
+                m_channel = NULL;
                 m_currentOperation.shellCommand.clear();
             }
             else {
@@ -620,5 +622,43 @@ bool QSshSocket::isLoggedIn()
 }
 
 QString QSshSocket::user(){return m_user;}
+
 QString QSshSocket::host(){return m_host;}
 int QSshSocket::port(){return m_port;}
+
+bool QSshSocket::eventFilter(QObject *obj, QEvent *e)
+{
+    if(e->type() == QKeyEvent::KeyPress ){
+        QKeyEvent *event = static_cast<QKeyEvent *>(e);
+        if(m_channel==NULL)
+            return false;
+        char keycode=0;
+        if( event->modifiers()==Qt::CTRL ){
+            switch (event->key()) {
+            case Qt::Key_A...Qt::Key_Z:
+                keycode = event->key()&0x1f;
+                break;
+            default:
+                break;
+            }
+        }
+        else{
+            switch (event->key()) {
+            case Qt::Key_Up:
+                keycode = Qt::Key_P&0x1f;//ctrl+p
+                break;
+            case Qt::Key_Down:
+                keycode = Qt::Key_N&0x1f;//ctrl+n
+                break;
+            default:
+                keycode = *event->text().toLocal8Bit().data();
+                break;
+            }
+        }
+        if(keycode!=0){
+//            qDebug() << "text:" << event->text() << "key:" << keycode;
+            return ssh_channel_write(m_channel, &keycode, 1)==1;
+        }
+    }
+    return QObject::eventFilter(obj, e);
+}

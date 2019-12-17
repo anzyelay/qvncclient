@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <QDebug>
+#include <QKeyEvent>
 
 class QSshSocket: public QThread
 {
@@ -138,7 +139,8 @@ public:
         \brief Returns the username of the current authenticated user on the remote host. If not connected to a remote host, or if a user has not been authenticated this returns "".
     */
     QString user();
-
+protected:
+    bool eventFilter(QObject *obj, QEvent *e);
 
 signals:
 
@@ -184,7 +186,6 @@ signals:
         \brief This signal is emitted when a current working directory is set.
     */
     void workingDirectorySet(QString cwd);
-
 private slots:
     void run();
 
@@ -221,6 +222,7 @@ private:
     SSHOperation m_currentOperation;
     ssh_session m_session;
     bool m_connected,m_run;
+    ssh_channel m_channel;
 };
 
 

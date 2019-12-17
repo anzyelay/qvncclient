@@ -79,6 +79,7 @@ MainWindow::MainWindow(QWidget *parent) :
     cmdcompleter->setCaseSensitivity(Qt::CaseInsensitive);
     ui->editCmd->setCompleter(cmdcompleter);
     ui->editCmd->installEventFilter(this);
+    ui->console->installEventFilter(&ssh);
 }
 
 MainWindow::~MainWindow()
