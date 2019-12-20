@@ -12,6 +12,7 @@ MainWindow::MainWindow(QWidget *parent) :
         ui(new Ui::MainWindow)
 {
     cfg = new QSettings("./"+qAppName()+".ini",QSettings::IniFormat, this);
+    ssh = new QSshSocket(this);
     ui->setupUi(this);
     connect(ui->btnShowStyle,&QPushButton::pressed,[=](){
         if(ui->btnShowStyle->text() == "FULL"){
@@ -31,7 +32,7 @@ MainWindow::MainWindow(QWidget *parent) :
         ui->btnShowStyle->setText("FULL");
         ui->vncView->setFullScreen(false);
     }
-    connect(&ssh, &QSshSocket::error, this ,[&](QSshSocket::SshError se){
+    connect(ssh, &QSshSocket::error, this ,[&](QSshSocket::SshError se){
         ui->statusBar->showMessage(tr("error :%1").arg(se));
     });
     connect(ui->btnSettings,&QPushButton::clicked,[=](){
@@ -42,57 +43,60 @@ MainWindow::MainWindow(QWidget *parent) :
         setting_ui.port->setText(cfg->value("port","22").toString());
         setting_ui.username->setText(cfg->value("username","root").toString());
         setting_ui.passwd->setText(cfg->value("passwd","").toString());
-        setting_ui.cmd->setText(cfg->value("cmd",LOGIN_SHELL_CMD_STR).toString());
-        setting_ui.exitCmd->setText(cfg->value("exitCmd",LOGOUT_SHELL_CMD_STR).toString());
         setting_ui.uploadDir->setText(cfg->value("uploadDir","/tmp/").toString());
         if(dialog.exec()==QDialog::Accepted){
             cfg->setValue("hostip",setting_ui.hostip->text());
             cfg->setValue("port",setting_ui.port->text());
             cfg->setValue("username",setting_ui.username->text());
             cfg->setValue("passwd",setting_ui.passwd->text());
-            cfg->setValue("cmd",setting_ui.cmd->text());
-            cfg->setValue("exitCmd",setting_ui.exitCmd->text());
             cfg->setValue("uploadDir",setting_ui.uploadDir->text());
         }
     });
-    connect(&ssh, &QSshSocket::commandExecuted, this, [=](QString s1,QString s2){
+    connect(ssh, &QSshSocket::commandExecuted, this, [=](QString s1,QString s2){
         if(!s2.isEmpty()){
             ui->console << s2;
         }
-        if(s2.contains("connect2vnc")){
-            ui->vncView->connectToVncServer(cfg->value("hostip").toString(), "");
-            ui->vncView->startFrameBufferUpdate();
-            ui->btnRemoteCtrl->setText("断开远程");
-            ui->btnRemoteCtrl->setEnabled(true);
-        }
     });
-    connect(&ssh,&QSshSocket::loginSuccessful,this,[=](){
-        ui->statusBar->showMessage(tr("已连接到 %1 , 登录用户: %2").arg(ssh.host()).arg(ssh.user()));
-        ssh.clearShellCmd();
+    connect(ssh,&QSshSocket::loginSuccessful,this,[=](){
+        ui->statusBar->showMessage(tr("已连接到 %1 , 登录用户: %2").arg(ssh->host()).arg(ssh->user()));
+        ssh->enter2shell();
     });
 
     ui->console->hide();
-    ui->editCmd->hide();
     ui->frame->hide();
+    ui->frameCmd->hide();
     QStringList strs = cfg->value("cmdhistory","ls").toStringList();
     auto cmdcompleter = new QCompleter(strs, ui->editCmd);
     cmdcompleter->setCaseSensitivity(Qt::CaseInsensitive);
     ui->editCmd->setCompleter(cmdcompleter);
     ui->editCmd->installEventFilter(this);
-    ui->console->installEventFilter(&ssh);
+    ui->console->installEventFilter(ssh);
+    connect(ui->cbxCmd,QOverload<int>::of(&QComboBox::highlighted),[=](int index){
+        ui->statusBar->showMessage(ui->cbxCmd->itemData(index).toString(), 1000);
+    });
+    connect(ui->cbxCmd,QOverload<int>::of(&QComboBox::currentIndexChanged),[=](int index){
+        ui->editCmd->setText(ui->cbxCmd->itemData(index).toString());
+    });
+
+    QMap<QString, QVariant> cmdMap = cfg->value("cmdMap").toMap();
+    QMapIterator<QString, QVariant> i(cmdMap);
+    while (i.hasNext()) {
+        i.next();
+        ui->cbxCmd->addItem(i.key(),i.value());
+    }
 }
 
 MainWindow::~MainWindow()
 {
     cfg->setValue("cmdhistory",dynamic_cast<QStringListModel *>(ui->editCmd->completer()->model())->stringList());
     ui->vncView->disconnectFromVncServer();
-    ssh.disconnectFromHost();
+    ssh->disconnectFromHost();
     delete ui;
 }
 
 void MainWindow::on_btnConnect_pressed()
 {
-    if(!ssh.isLoggedIn())
+    if(!ssh->isLoggedIn())
     {
         QString hostip,username,passwd;
         username = cfg->value("username").toString();
@@ -102,8 +106,8 @@ void MainWindow::on_btnConnect_pressed()
             ui->statusBar->showMessage("温馨提示：请先设置连接参数");
             return;
         }
-        ssh.setConnectHost(cfg->value("hostip").toString());
-        ssh.login(username, passwd);
+        ssh->setConnectHost(cfg->value("hostip").toString());
+        ssh->login(username, passwd);
     }
 }
 
@@ -113,20 +117,19 @@ void MainWindow::on_btnDisconnect_pressed()
     if(ui->vncView->isConnectedToServer()){
         ui->vncView->disconnectFromVncServer();
     }
-    ssh.add2ShellCommand(cfg->value("exitCmd").toString());//execute exit cmd before ssh exit shell
     ui->btnRemoteCtrl->setText("远程控制");
     usleep(100000);// give some time to make a perfect execution;
-    ssh.disconnectFromHost();
+    ssh->disconnectFromHost();
     ui->statusBar->showMessage(tr("已下线"));
 }
 
 void MainWindow::on_editCmd_returnPressed()
 {
-    if(!ssh.isLoggedIn()){
+    if(!ssh->isLoggedIn()){
         ui->statusBar->showMessage("请先连接。");
         return;
     }
-    ssh.add2ShellCommand(ui->editCmd->text());
+    ssh->add2ShellCommand(ui->editCmd->text());
     QStringList strs = dynamic_cast<QStringListModel *>(ui->editCmd->completer()->model())->stringList();
     if(!strs.contains(ui->editCmd->text()))
     {
@@ -140,7 +143,7 @@ void MainWindow::on_editCmd_returnPressed()
 void MainWindow::on_toolBtnCmd_pressed()
 {
     bool show = ui->editCmd->isVisible();
-    ui->editCmd->setHidden(show);
+    ui->frameCmd->setHidden(show);
     ui->console->setHidden(show);
 }
 
@@ -151,46 +154,44 @@ void MainWindow::on_toolBtnSet_pressed()
 
 void MainWindow::on_btnRemoteCtrl_clicked()
 {
+    ui->btnRemoteCtrl->setEnabled(false);
     QString str = ui->btnRemoteCtrl->text();
     if(str == "断开远程"){
         if(ui->vncView->isConnectedToServer())
             ui->vncView->disconnectFromVncServer();
-        if(!ssh.isLoggedIn())
-            return;
-        ssh.add2ShellCommand(cfg->value("exitCmd").toString());
         ui->btnRemoteCtrl->setText("远程控制");
     }
     else{
-        if(!ssh.isLoggedIn()){
-            ui->statusBar->showMessage("请先连接。");
-            return;
-        }
-        if(!cfg->value("cmd").toString().isEmpty()){
-            ssh.add2ShellCommand(cfg->value("cmd").toString());
-            ui->btnRemoteCtrl->setEnabled(false);
+        if(ui->vncView->connectToVncServer(cfg->value("hostip").toString(), "")) {
+            ui->vncView->startFrameBufferUpdate();
+            ui->btnRemoteCtrl->setText("断开远程");
         }
     }
+    ui->btnRemoteCtrl->setEnabled(true);
 }
 
 void MainWindow::on_btnUpload_clicked()
 {
-    if(!ssh.isLoggedIn()){
+    if(!ssh->isLoggedIn()){
         ui->statusBar->showMessage("请先连接上再传输.");
         return;
     }
     QStringList files = QFileDialog::getOpenFileNames(this);
+    if(files.isEmpty())
+        return;
     bool txOver=false;
     int txDoneCnt = 0;
-    connect(&ssh, &QSshSocket::pushSuccessful, this, [&](QString srcFile, QString dstFile){
-        QColor defaultColor = ui->console->textColor();
-        ui->console->setTextColor(Qt::blue);
+    QColor defaultColor = ui->console->textColor();
+    QTextCharFormat defaultCFT = ui->console->currentCharFormat();
+    connect(ssh, &QSshSocket::pushSuccessful, this, [&](QString srcFile, QString dstFile){
         if(!dstFile.isEmpty()){
-            ui->console->append(srcFile + "--->" + dstFile + ":\tuploading 100%,tx done!");
+            ui->console->setTextColor(Qt::blue);
+            ui->console->append(srcFile + "--->" + dstFile + ":\t上传100%,上传成功!");
             txDoneCnt++;
         }
         else{
             ui->console->setTextColor(Qt::red);
-            ui->console->append(srcFile + "--->" + dstFile + ":\tuploading error!");
+            ui->console->append(srcFile + "--->" + dstFile + ":\t上传错误，请检查!");
         }
         txOver = true;
         ui->console->setTextColor(defaultColor);
@@ -199,19 +200,19 @@ void MainWindow::on_btnUpload_clicked()
         txOver = false;
         QFileInfo fi(file);
         if(!file.isEmpty()){
-            ui->console->insertText("ready to upload " + fi.fileName() + ",wait for a moment!");
+            ui->console->append("准备上传:" + fi.fileName() + ",请稍等...");
         }
-        ssh.pushFile(file, cfg->value("uploadDir").toString()+"/"+fi.fileName());
-        while (!txOver && ssh.isLoggedIn()) {
+        ssh->pushFile(file, cfg->value("uploadDir").toString()+"/"+fi.fileName());
+        while (!txOver && ssh->isLoggedIn()) {
             qApp->processEvents();
             usleep(1000);
         }
     }
-    this->disconnect(&ssh, &QSshSocket::pushSuccessful, 0, 0);
-    QColor defaultColor = ui->console->textColor();
+    this->disconnect(ssh, &QSshSocket::pushSuccessful, 0, 0);
     ui->console->setTextColor(Qt::green);
-    ui->console->append(tr("======总共上传了 %1 个文件======").arg(txDoneCnt));
-    ui->console->setTextColor(defaultColor);
+    ui->console->append(tr("======总共上传了 %1 个文件======\n").arg(txDoneCnt));
+    ui->console->setCurrentCharFormat(defaultCFT);
+    ssh->enter2shell();
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *e)
@@ -221,11 +222,11 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e)
         if(keyevent->modifiers() == Qt::ControlModifier){
             switch (keyevent->key()) {
             case Qt::Key_C:
-                ssh.add2ShellCommand("CTRL-C");
+                ssh->add2ShellCommand("CTRL-C");
                 return true;
                 break;
             case Qt::Key_L:
-                ssh.add2ShellCommand("clear");
+                ssh->add2ShellCommand("clear");
                 return true;
                 break;
             case Qt::Key_U:
@@ -244,4 +245,27 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e)
         }
     }
     return QMainWindow::eventFilter(obj, e);
+}
+
+void MainWindow::on_btnAdd_clicked()
+{
+    bool ok;
+    QString cmdname = QInputDialog::getText(this, "加入命令","请输入命令名", QLineEdit::Normal, "" , &ok);
+    if(ok&&!cmdname.isEmpty()){
+        ui->cbxCmd->addItem(cmdname, ui->editCmd->text());
+        QMap<QString, QVariant> cmdMap = cfg->value("cmdMap").toMap();
+        cmdMap.insert(cmdname, ui->editCmd->text());
+        cfg->setValue("cmdMap", cmdMap);
+        ui->cbxCmd->setCurrentText(cmdname);
+    }
+}
+
+void MainWindow::on_btnDel_clicked()
+{
+    int index = ui->cbxCmd->currentIndex();
+    QString rmName = ui->cbxCmd->itemText(index);
+    ui->cbxCmd->removeItem(index);
+    QMap<QString, QVariant> cmdMap = cfg->value("cmdMap").toMap();
+    cmdMap.remove(rmName);
+    cfg->setValue("cmdMap", cmdMap);
 }

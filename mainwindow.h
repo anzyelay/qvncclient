@@ -35,9 +35,13 @@ private slots:
 
     void on_btnUpload_clicked();
 
+    void on_btnAdd_clicked();
+
+    void on_btnDel_clicked();
+
 private:
     Ui::MainWindow *ui;
-    QSshSocket ssh;
+    QSshSocket *ssh;
     QSettings *cfg;
 };
 

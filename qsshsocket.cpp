@@ -102,10 +102,9 @@ int QSshSocket::interactiveShellSession(void)
         ssh_channel_free(channel);
         return rc;
     }
-    QString curCmdStr="login-shell";
-    ssh_channel_write(channel,"\n", 1);
-    msleep(100);
     m_channel = channel;
+    QString curCmdStr="login-shell";
+    msleep(100);
     while (m_run && m_currentOperation.type == ShellLoop
                     && ssh_channel_is_open(channel)
                     && !ssh_channel_is_eof(channel)) {
@@ -456,8 +455,11 @@ void QSshSocket::run()
     {
         {
             // authenticate connection with credentials
-            if (!m_loggedIn && m_currentOperation.type == Login){
-                executeLogin();
+            if (!m_loggedIn ){
+                if(m_currentOperation.type == Login)
+                    executeLogin();
+                else
+                    msleep(10);
             }
             // if all ssh setup has been completed, check to see if we have any commands to execute
             else if (m_currentOperation.type == Command || m_currentOperation.type == WorkingDirectoryTest)
@@ -582,7 +584,7 @@ void QSshSocket::executeCommand(QString command)
 }
 void QSshSocket::add2ShellCommand(QString command)
 {
-    m_currentOperation.type = ShellLoop;
+    enter2shell();
     m_currentOperation.shellCommand << command.split(";", QString::SkipEmptyParts);
 }
 

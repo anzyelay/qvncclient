@@ -67,12 +67,9 @@ public:
         On success, the signal commandExecuted is emitted while error is emmited on failure.
     */
     void executeCommand(QString command);
-    inline void clearShellCmd(void){
-        m_currentOperation.shellCommand.clear();
-        m_currentOperation.type = ShellLoop;
-    }
+    inline void clearShellCmd(void){ m_currentOperation.shellCommand.clear(); }
     void add2ShellCommand(QString command);
-
+    void enter2shell(void){  m_currentOperation.type = ShellLoop; }
     /*!
         \brief Returns the hostname of the remote machine this socket is connected to. If not connected to a remote host, this returns "".
     */
@@ -217,7 +214,6 @@ private:
     int m_port;
     long m_timeout = -1;
     bool m_loggedIn ;
-    QThread * m_thread;
     QString m_workingDirectory,m_nextWorkingDir,m_user, m_host,m_password,m_key;
     SSHOperation m_currentOperation;
     ssh_session m_session;
