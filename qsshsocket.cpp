@@ -127,9 +127,10 @@ int QSshSocket::interactiveShellSession(void)
         }while(nbytes!=0);
         if(!curCmdStr.isEmpty() || totalBytes > 0 ){
             QString response  = QString::fromUtf8(buffer, totalBytes);
+//            write(1, response.toLocal8Bit().data(), totalBytes);
+            qDebug() << response.toLocal8Bit();
             const QRegExp rx(R"(\033\]0\;(.*)\007|\033\(B|\007)");//007 alarm
             response = response.remove(rx);
-//            write(1, response.toLocal8Bit().data(), totalBytes);
             emit commandExecuted(curCmdStr, response);
             curCmdStr.clear();
             memset(buffer, 0, totalBytes);
@@ -634,11 +635,15 @@ bool QSshSocket::eventFilter(QObject *obj, QEvent *e)
         QKeyEvent *event = static_cast<QKeyEvent *>(e);
         if(m_channel==NULL)
             return false;
-        char keycode=0;
+//        char keyremaps[10]={0};
+//        unsigned len=0;
+        QByteArray keyremaps;
+//        char keycode=0;
         if( event->modifiers()==Qt::CTRL ){
             switch (event->key()) {
             case Qt::Key_A...Qt::Key_Z:
-                keycode = event->key()&0x1f;
+//                keycode = event->key()&0x1f;
+                keyremaps.append(event->key()&0x1f);
                 break;
             default:
                 break;
@@ -647,19 +652,30 @@ bool QSshSocket::eventFilter(QObject *obj, QEvent *e)
         else{
             switch (event->key()) {
             case Qt::Key_Up:
-                keycode = Qt::Key_P&0x1f;//ctrl+p
+//                keyremaps << Qt::Key_P&0x1f;
+                keyremaps.append("\033[A");
+//                keycode = Qt::Key_P&0x1f;//ctrl+p
                 break;
             case Qt::Key_Down:
-                keycode = Qt::Key_N&0x1f;//ctrl+n
+                keyremaps.append("\033[B");
+//                keyremaps << Qt::Key_N&0x1f;
+//                keycode = Qt::Key_N&0x1f;//ctrl+n
+                break;
+            case Qt::Key_Right:
+                keyremaps.append("\033[C");
+                break;
+            case Qt::Key_Left:
+                keyremaps.append("\033[D");
                 break;
             default:
-                keycode = *event->text().toLocal8Bit().data();
+//                keycode = *event->text().toLocal8Bit().data();
+                keyremaps = event->text().toLocal8Bit();
                 break;
             }
         }
-        if(keycode!=0){
-//            qDebug() << "text:" << event->text() << "key:" << keycode;
-            return ssh_channel_write(m_channel, &keycode, 1)==1;
+        if(!keyremaps.isEmpty()){
+//            qDebug() << keyremaps << "size:" << keyremaps.size();
+            return ssh_channel_write(m_channel, keyremaps.data(), keyremaps.size())==keyremaps.size();
         }
     }
     return QObject::eventFilter(obj, e);

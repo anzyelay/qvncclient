@@ -1,6 +1,8 @@
 #include "qannconsole.h"
 #include <QFontDatabase>
 #include <QTextBlock>
+#include <QScrollBar>
+#include <QStringList>
 #include <QDebug>
 
 QAnnConsole::QAnnConsole(QWidget *parent) : QTextEdit(parent)
@@ -476,103 +478,76 @@ void QAnnConsole::parseDisplayEscapeSequence(int attribute, QListIterator< QStri
     }
 }
 bool QAnnConsole::parseControlEscapeSequence(QTextCursor &cursor, const char action,const QString attribute, QTextCharFormat &textCharFormat){
-    bool ok=true;
+    bool ok=true,ret=true;
     switch (action) {
-    case 'K':{ // clears all characters form the cursor to the end of the line
-        if(attribute == '2'){
-            cursor.select(QTextCursor::LineUnderCursor);
-            cursor.removeSelectedText();
-        }
-        else if(attribute == '1'){
-            cursor.movePosition(QTextCursor::StartOfLine, QTextCursor::KeepAnchor);
-            cursor.removeSelectedText();
-        }
-        else
-        {
-            cursor.movePosition(QTextCursor::EndOfLine, QTextCursor::KeepAnchor);
-            cursor.removeSelectedText();
-        }
-        break;
-    }
-    case 'J':{ // clears Display
-        if(attribute == '2'){
-            cursor.select(QTextCursor::Document);
-            cursor.removeSelectedText();
-        }
-        else if(attribute == '1'){
-            cursor.movePosition(QTextCursor::Start, QTextCursor::KeepAnchor);
-            cursor.removeSelectedText();
-        }
-        else
-        {
-            cursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
-            cursor.removeSelectedText();
-        }
+    case '@':{
+        int val = attribute.toInt(&ok);
+        if(!ok) val = 1;
+        cursor.insertText(QString(val,QChar(' ')));
         break;
     }
     case 'A':{ // cursor up
         int val = attribute.toInt(&ok);
-        if(ok)
-            cursor.movePosition(QTextCursor::Up, QTextCursor::MoveAnchor, val);
+        if(!ok) val = 1;
+        cursor.movePosition(QTextCursor::Up, QTextCursor::MoveAnchor, val);
         break;
     }
     case 'B':{ // cursor down
         int val = attribute.toInt(&ok);
-        if(ok)
-            cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor, val);
+        if(!ok) val = 1;
+        cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor, val);
         break;
     }
-    case 'C':{ // cursor left
+    case 'C':{ // cursor right
         int val = attribute.toInt(&ok);
-        if(ok)
-            cursor.movePosition(QTextCursor::Left, QTextCursor::MoveAnchor, val);
+        if(!ok) val = 1;
+        ok = cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, val);
         break;
     }
-    case 'b':{ // define remove left characther by myself to exchange '\b'
+    case 'D':{ // cursor left
         int val = attribute.toInt(&ok);
-        if(ok){
-            cursor.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor, val);
-            cursor.removeSelectedText();
-        }
-        break;
-    }
-    case 'D':{ // cursor right
-        int val = attribute.toInt(&ok);
-        if(ok)
-            cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, val);
+        if(!ok) val = 1;
+        ok = cursor.movePosition(QTextCursor::Left, QTextCursor::MoveAnchor, val);
         break;
     }
     case 'E':{ // cursor to beginning of the n lines down
         int val = attribute.toInt(&ok);
-        if(ok){
-            cursor.movePosition(QTextCursor::StartOfLine);
-            cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor, val);
-        }
+        if(!ok) val = 1;
+        cursor.movePosition(QTextCursor::StartOfLine);
+        cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor, val);
         break;
     }
     case 'F':{ // cursor to beginning of the n lines up
         int val = attribute.toInt(&ok);
-        if(ok){
-            cursor.movePosition(QTextCursor::StartOfLine);
-            cursor.movePosition(QTextCursor::Up, QTextCursor::MoveAnchor, val);
-        }
+        if(!ok) val = 1;
+        cursor.movePosition(QTextCursor::StartOfLine);
+        cursor.movePosition(QTextCursor::Up, QTextCursor::MoveAnchor, val);
         break;
     }
-    case 'd':{ //
+    case 'd':{ // Line Position Absolute  [row]
         int row = attribute.toInt(&ok);
-        if(ok){
-            int colu = cursor.columnNumber();
-            parseControlEscapeSequence(cursor, 'H' ,QString("%1;%2").arg(row).arg(colu), textCharFormat);
+        if(!ok) row = 1;
+        int colu = cursor.columnNumber();
+        parseControlEscapeSequence(cursor, 'H' ,QString("%1;%2").arg(row).arg(colu), textCharFormat);
 //            qDebug() << "row:" << row << "\tcolu:"<< colu;
+        break;
+    }
+    case 'e':{ // Line Position relative [rows]
+        int drow = attribute.toInt(&ok);
+        if(!ok) drow = 1;
+        if(drow>0)
+            parseControlEscapeSequence(cursor, 'B' ,QString("%1").arg(drow), textCharFormat);
+        else if(drow<0){
+            parseControlEscapeSequence(cursor, 'A' ,QString("%1").arg(-drow), textCharFormat);
         }
+//            qDebug() << "row:" << row << "\tcolu:"<< colu;
         break;
     }
     case 'G':{ // move cursor to absolute column n;
         int colu = attribute.toInt(&ok);
-        if(ok){
-            cursor.movePosition(QTextCursor::StartOfLine);
-            cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, colu);
-        }
+        if(!ok) colu = 1;
+        cursor.movePosition(QTextCursor::StartOfLine);
+        cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, colu);
         break;
     }
     case 'H': // set cursor position, move to special row,column
@@ -580,11 +555,12 @@ bool QAnnConsole::parseControlEscapeSequence(QTextCursor &cursor, const char act
     {
         QStringList capturedTexts = attribute.split(";");
         int colu=1,row=1;
-        if(!capturedTexts.isEmpty()){
-            row = capturedTexts.at(0).toInt(&ok);
+        QListIterator<QString> i(capturedTexts);
+        if(i.hasNext()){
+            row = i.next().toInt(&ok);
             if(!ok) row = 1;
-            if(capturedTexts.size()==2){
-                colu = capturedTexts.at(1).toInt(&ok);
+            if(i.hasNext()){
+                colu = i.next().toInt(&ok);
                 if(!ok) colu = 1;
             }
         }
@@ -604,7 +580,72 @@ bool QAnnConsole::parseControlEscapeSequence(QTextCursor &cursor, const char act
         }
 //                qDebug() << "line:" << row << "\tcol:" << colu ;
 //                qDebug() << pdoc->toRawText();
-        ok=true;
+        break;
+    }
+    case 'J':{ // clears Display
+        if(attribute == '2'){
+            cursor.select(QTextCursor::Document);
+            cursor.removeSelectedText();
+        }
+        else if(attribute == '1'){
+            cursor.movePosition(QTextCursor::Start, QTextCursor::KeepAnchor);
+            cursor.removeSelectedText();
+        }
+        else
+        {
+            cursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+            cursor.removeSelectedText();
+        }
+        break;
+    }
+    case 'K':{ // clears all characters form the cursor to the end of the line
+        if(attribute == '2'){
+            cursor.select(QTextCursor::LineUnderCursor);
+            cursor.removeSelectedText();
+        }
+        else if(attribute == '1'){
+            cursor.movePosition(QTextCursor::StartOfLine, QTextCursor::KeepAnchor);
+            cursor.removeSelectedText();
+        }
+        else
+        {
+            cursor.movePosition(QTextCursor::EndOfLine, QTextCursor::KeepAnchor);
+            cursor.removeSelectedText();
+        }
+        break;
+    }
+    case 'L':{ // insert n lines
+        int val = attribute.toInt(&ok);
+        if(!ok) val = 1;
+        cursor.insertText(QString(val,QChar('\n')));
+        break;
+    }
+    case 'M':{ // delete n lines
+        int val = attribute.toInt(&ok);
+        if(!ok) val = 1;
+        cursor.movePosition(QTextCursor::StartOfLine, QTextCursor::MoveAnchor);
+        cursor.movePosition(QTextCursor::Down, QTextCursor::KeepAnchor, val-1);
+        cursor.movePosition(QTextCursor::EndOfLine, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+        break;
+    }
+    case 'P':{ // Delete n Character(s)
+        int val = attribute.toInt(&ok);
+        if(!ok) val = 1;
+        cursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, val);
+        cursor.deleteChar();
+        break;
+    }
+    case 'S':{
+        int val = attribute.toInt(&ok);
+        if(!ok) val = 1;
+        this->scroll(0,-val);
+        break;
+    }
+    case 'T':{
+        int val = attribute.toInt(&ok);
+        if(!ok) val = 1;
+        this->scroll(0,val);
         break;
     }
     case 's':{ // save current cursor position
@@ -626,6 +667,11 @@ bool QAnnConsole::parseControlEscapeSequence(QTextCursor &cursor, const char act
         else if (attribute == "?12") {
             textCharFormat.setFontWeight(QFont::Black);
         }
+//        else if (attribute == "?7") {
+//            QTextOption  topt = cursor.document()->defaultTextOption();
+//            topt.setWrapMode(QTextOption::WordWrap);
+//            cursor.document()->setDefaultTextOption(topt);
+//        }
         break;
     }
     case 'l':{ //
@@ -639,20 +685,34 @@ bool QAnnConsole::parseControlEscapeSequence(QTextCursor &cursor, const char act
         else if (attribute == "?12") {
             textCharFormat.setFontWeight(QFont::Normal);
         }
+//        else if (attribute == "?7") {
+//            QTextOption  topt = cursor.document()->defaultTextOption();
+//            topt.setWrapMode(QTextOption::NoWrap);
+//            cursor.document()->setDefaultTextOption(topt);
+//        }
         break;
+    }
+    case 'r':{//Set Scrolling Region [top;bottom] (default = full size of window) (DECSTBM), VT100
+//        QStringList atts = attribute.split(";");
+//        if(atts.count()==2){
+//            int top = atts.at(0).toInt();
+//            int bottom = atts.at(1).toInt();
+//            this->verticalScrollBar()->setMinimumHeight(bottom-top+1);
+//        }
+//        break;
     }
     default:
-        ok=false;
-//        qDebug() << "no action for:" << action << ":" << attribute;
+        ret=false;
+        qDebug() << "no action for:" << action << ":" << attribute;
         break;
     }
-    return ok;
+    return ret;
 }
 void QAnnConsole::insertAnsiEscapeSequence(QString const & text)
 {
     QString m_text(text);
-    QRegExp const escapeSequenceExpression(R"(\033\[([\d;\?]*)([a-zA-Z]{1}))");
-    m_text = m_text.replace('\b',"\033\[1b");
+    QRegExp const escapeSequenceExpression(R"(\033\[([\d;\?]*)([a-zA-Z@]{1}))");
+    m_text = m_text.replace('\b',"\033\[1D");
     if(escapeSequenceExpression.indexIn(m_text, 0)==-1){
         insertPlainText(m_text);
         return moveCursor(QTextCursor::End);
@@ -661,7 +721,6 @@ void QAnnConsole::insertAnsiEscapeSequence(QString const & text)
     int previousOffset = 0, offset;
     QTextCursor cursor(this->textCursor());
     cursor.beginEditBlock();
-    cursor.movePosition(QTextCursor::End);
     QTextCharFormat textCharFormat = defaultTextCharFormat;
     while ( (offset = escapeSequenceExpression.indexIn(m_text, previousOffset))>=0 ) {
         if(offset!=previousOffset){
@@ -689,10 +748,14 @@ void QAnnConsole::insertAnsiEscapeSequence(QString const & text)
                 qDebug() << "no action for:" << escapeSequenceExpression.capturedTexts().takeFirst();
         }
     }
-    cursor.insertText(m_text.mid(previousOffset), textCharFormat);
+    const QString text2insert = m_text.mid(previousOffset);
+    if(!cursor.atEnd()){
+        cursor.movePosition(QTextCursor::Right,QTextCursor::KeepAnchor,text2insert.length());
+    }
+    cursor.insertText(text2insert, textCharFormat);
     cursor.setCharFormat(defaultTextCharFormat);
     cursor.endEditBlock();
-    return moveCursor(QTextCursor::End);
+    setTextCursor(cursor);
 }
 
 void QAnnConsole::setText(QString const & text)
