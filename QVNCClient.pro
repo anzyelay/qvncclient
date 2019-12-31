@@ -32,4 +32,7 @@ FORMS    += mainwindow.ui \
 target.path = /tmp
 INSTALLS += target
 
+RESOURCES += \
+    resource.qrc
+
 

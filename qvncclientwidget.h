@@ -13,7 +13,7 @@ public:
     explicit QVNCClientWidget(QWidget *parent = 0);
     ~QVNCClientWidget();
 
-    bool connectToVncServer(QString ip, QString password, int port = 5900);
+    bool connectToVncServer(QString ip, QString password="", int port = 5900);
     bool isConnectedToServer();
     void disconnectFromVncServer();
 

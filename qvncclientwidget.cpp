@@ -290,9 +290,8 @@ void QVNCClientWidget::paintEvent(QPaintEvent *event)
     if(screen.isNull())
     {
         screen = QImage(width(), height(), QImage::Format_RGB32);
-        screen.fill(Qt::red);
+        screen.fill(QColor(0,0,0,0));
     }
-
     QPainter painter;
     painter.begin(this);
     if(isScaled){
@@ -412,7 +411,7 @@ void QVNCClientWidget::disconnectFromVncServer()
 {
     disconnect(&socket, SIGNAL(readyRead()), this, SLOT(onServerMessage()));
     socket.disconnectFromHost();
-    screen.fill(Qt::red);
+    screen.fill(QColor(0,0,0,0));
     update();
 }
 

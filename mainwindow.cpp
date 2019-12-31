@@ -3,27 +3,37 @@
 #include "ui_mainwindow.h"
 #include <QCompleter>
 #include <QTimer>
+#include <QSplashScreen>
 
 MainWindow::MainWindow(QWidget *parent) :
         QMainWindow(parent),
         ui(new Ui::MainWindow)
 {
+    QSplashScreen splash(QPixmap(":/fs.bmp"));
+    splash.show();
     ui->setupUi(this);
     auto t = new QTimer(this);
     connect(t, &QTimer::timeout, [=](){
         if(ui->vncView->isConnectedToServer()) return;
         ui->vncView->disconnectFromVncServer();
-//        ui->vncView->connectToVncServer("192.168.200.166", "");
-        bool isconnect = ui->vncView->connectToVncServer("127.0.0.1", "");
+        bool isconnect = ui->vncView->connectToVncServer("127.0.0.1");
         if(isconnect){
             ui->vncView->startFrameBufferUpdate();
             ui->vncView->setFocus();
-//            ui->vncView->grabKeyboard();
             t->stop();
             t->start(5000);
         }
     });
     t->start(200);
+    int i=1;
+    while (!ui->vncView->isConnectedToServer()) {
+        QString str(i++,QChar('.'));
+        splash.showMessage("启动中，请稍等\n"+str,Qt::AlignBottom|Qt::AlignHCenter);
+        usleep(1000);
+        qApp->processEvents();
+        if(i>30) i=1;
+    }
+    splash.finish(this);
 }
 
 MainWindow::~MainWindow()
