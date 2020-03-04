@@ -9,7 +9,7 @@ MainWindow::MainWindow(QWidget *parent) :
         QMainWindow(parent),
         ui(new Ui::MainWindow)
 {
-    QSplashScreen splash(QPixmap(":/fs.bmp"));
+    QSplashScreen splash(QPixmap(":/fs.bmp"),Qt::WindowStaysOnTopHint);
     splash.show();
     ui->setupUi(this);
     auto t = new QTimer(this);
@@ -33,7 +33,7 @@ MainWindow::MainWindow(QWidget *parent) :
         qApp->processEvents();
         if(i>30) i=1;
     }
-    splash.finish(this);
+    splash.finish(parent);
 }
 
 MainWindow::~MainWindow()

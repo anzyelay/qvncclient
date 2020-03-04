@@ -206,6 +206,7 @@ clientinit:
     }
 
     screen = QImage(frameBufferWidth, frameBufferHeight, QImage::Format_RGB32);
+    resizeEvent(NULL);
     sendSetPixelFormat();
     sendSetEncodings();
     connect(&socket, SIGNAL(readyRead()), this, SLOT(onServerMessage()));
@@ -275,6 +276,8 @@ void QVNCClientWidget::resizeEvent(QResizeEvent *e)
     }
     else{
         qint32 x=0,y=0;
+        if(screen.isNull())
+            screen = QImage(width(), height(), QImage::Format_RGB32);
         if(screen.width()<this->geometry().width())
             x = (this->geometry().width() - screen.width())/2;
         if(screen.height()<this->geometry().height())
