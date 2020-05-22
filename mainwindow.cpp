@@ -9,9 +9,17 @@ MainWindow::MainWindow(QWidget *parent) :
         QMainWindow(parent),
         ui(new Ui::MainWindow)
 {
-    QSplashScreen splash(QPixmap(":/fs.bmp").scaled(this->size()),Qt::WindowStaysOnTopHint);
-    splash.show();
     ui->setupUi(this);
+    QPixmap pixmap("/tmp/logo.bmp");
+    if(pixmap.isNull()){
+        pixmap = QPixmap(this->size());
+        pixmap.fill(Qt::black);
+    }
+    else {
+        pixmap = pixmap.scaled(this->size());
+    }
+    QSplashScreen splash(pixmap,Qt::WindowStaysOnTopHint);
+    splash.show();
     auto t = new QTimer(this);
     connect(t, &QTimer::timeout, [=](){
         if(ui->vncView->isConnectedToServer()) return;
@@ -28,7 +36,7 @@ MainWindow::MainWindow(QWidget *parent) :
     int i=1;
     while (!ui->vncView->isConnectedToServer()) {
         QString str(i++,QChar('.'));
-        splash.showMessage("启动中，请稍等\n"+str,Qt::AlignBottom|Qt::AlignHCenter);
+        splash.showMessage("正在启动，请稍等\n"+str,Qt::AlignBottom|Qt::AlignHCenter, Qt::blue);
         usleep(1000);
         qApp->processEvents();
         if(i>30) i=1;
