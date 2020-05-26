@@ -16,6 +16,7 @@
   <property name="styleSheet">
    <string notr="true">*{
 	background-color: rgba(0, 0, 0,0);
+	color: rgb(238, 238, 236);
 }
 </string>
   </property>

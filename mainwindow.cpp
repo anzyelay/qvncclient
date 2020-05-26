@@ -33,13 +33,14 @@ MainWindow::MainWindow(QWidget *parent) :
         }
     });
     t->start(200);
-    int i=1;
+    int i=70;
+    splash.setFont(QFont("msyh", 14));
     while (!ui->vncView->isConnectedToServer()) {
-        QString str(i++,QChar('.'));
-        splash.showMessage("正在启动，请稍等\n"+str,Qt::AlignBottom|Qt::AlignHCenter, Qt::blue);
-        usleep(1000);
+        QString str(i++,QChar('='));
+        splash.showMessage("正在启动，请稍等\n"+str,Qt::AlignBottom|Qt::AlignHCenter, Qt::green);
+        usleep(100000);
         qApp->processEvents();
-        if(i>30) i=1;
+        if(i>71) i=70;
     }
     splash.finish(parent);
 }
