@@ -290,6 +290,7 @@ void QVNCClientWidget::resizeEvent(QResizeEvent *e)
 
 void QVNCClientWidget::paintEvent(QPaintEvent *event)
 {
+    Q_UNUSED(event)
     if(screen.isNull())
     {
         screen = QImage(width(), height(), QImage::Format_RGB32);

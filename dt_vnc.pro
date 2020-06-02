@@ -29,9 +29,8 @@ FORMS    += mainwindow.ui \
 #        LIBS += -lws2_32 -lz
 #}
 #else:LIBS += -lssh
-target.path = /tmp
+target.path = /tmp/tmp
 INSTALLS += target
-
 #RESOURCES += \
 #    resource.qrc
 
