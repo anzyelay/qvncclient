@@ -34,4 +34,4 @@ INSTALLS += target
 #RESOURCES += \
 #    resource.qrc
 
-
+QMAKE_CXXFLAGS += -Wno-unused-variable
