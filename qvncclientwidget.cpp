@@ -1,39 +1,28 @@
 #include "qvncclientwidget.h"
 
 QVNCClientWidget::QVNCClientWidget(QWidget *parent) : QWidget(parent)
+  ,isFrameBufferUpdating(true)
+  ,isScaled(true)
+  ,m_btnStatus(0)
 {
-    isFrameBufferUpdating = true;
-    isScaled = true;
     setMouseTracking(true);
 }
 
 bool QVNCClientWidget::sendSetPixelFormat()
 {
-    unsigned char pixfmt[20];
+    struct SET_PIXELFORMAT_STRUCT{
+        quint8 					msgType;
+        quint8 					padding[3];
+        RFBProtol::PixelFormat 	pixfmt;
+    }setpixfmt = {0};
 
-    pixfmt[0] = 0; //message type
-    pixfmt[1] = 0x00;
-    pixfmt[2] = 0x00;
-    pixfmt[3] = 0x00;
-    pixfmt[4] = this->pixelFormat.bitsPerPixel;
-    pixfmt[5] = this->pixelFormat.depth;
-    pixfmt[6] = this->pixelFormat.bigEndianFlag;
-    pixfmt[7] = this->pixelFormat.trueColorFlag;
-    pixfmt[8] = (this->pixelFormat.redMax>> 8) & 0xFF;
-    pixfmt[9] = (this->pixelFormat.redMax >> 0) & 0xFF;
-    pixfmt[10] = (this->pixelFormat.greenMax >> 8) & 0xFF;
-    pixfmt[11] = (this->pixelFormat.greenMax >> 0) & 0xFF;
-    pixfmt[12] = (this->pixelFormat.blueMax >> 8) & 0xFF;
-    pixfmt[13] = (this->pixelFormat.blueMax >> 0) & 0xFF;
-    pixfmt[14] = this->pixelFormat.redShift;
-    pixfmt[15] = this->pixelFormat.greenShift;
-    pixfmt[16] = this->pixelFormat.blueShift;
-    pixfmt[17] = 0x00;
-    pixfmt[18] = 0x00;
-    pixfmt[19] = 0x00;
+    setpixfmt.msgType = RFBProtol::SetPixelFormat; //message type
+    setpixfmt.pixfmt = pixelFormat;
+    setpixfmt.pixfmt.redMax = qToBigEndian(pixelFormat.redMax);
+    setpixfmt.pixfmt.greenMax = qToBigEndian(pixelFormat.greenMax);
+    setpixfmt.pixfmt.blueMax = qToBigEndian(pixelFormat.blueMax);
 
-    if (socket.write((char *)pixfmt,20) != 20)
-    {
+    if (socket.write((char *)&setpixfmt, sizeof(setpixfmt)) != sizeof(setpixfmt)) {
         qDebug("   fail to set pixel format");
         return false;
     }
@@ -43,24 +32,23 @@ bool QVNCClientWidget::sendSetPixelFormat()
 
 bool QVNCClientWidget::sendSetEncodings(void)
 {
-    struct SET_ENCODING_STRUCT
-    {
+    struct SET_ENCODING_STRUCT {
         quint8                  msgType;
         quint8                  padding;
         quint16                 numOfEncodings;
         qint32                  encoding[10];
     }enc;
-    enc.msgType = 2;
+    enc.msgType = RFBProtol::SetEncodings;
     enc.padding = 0;
     enc.numOfEncodings = qToBigEndian((quint16)8);
-    enc.encoding[0] = qToBigEndian((qint32)-239);//richcursor
-    enc.encoding[1] = qToBigEndian((qint32)-223);//desktopsize
-    enc.encoding[2] = qToBigEndian((qint32)16);//zrle
-    enc.encoding[3] = qToBigEndian((qint32)1);//copyrect
-    enc.encoding[4] = qToBigEndian((qint32)15);
-    enc.encoding[5] = qToBigEndian((qint32)5);//hextile
-    enc.encoding[6] = qToBigEndian((qint32)2);//rre
-    enc.encoding[7] = qToBigEndian((qint32)0);//raw
+    enc.encoding[0] = qToBigEndian((qint32)RFBProtol::Encodings::CursorSizePseudo);//richcursor
+    enc.encoding[1] = qToBigEndian((qint32)RFBProtol::Encodings::DesktopSizePseudo);//desktopsize
+    enc.encoding[2] = qToBigEndian((qint32)RFBProtol::Encodings::ZRLE);//zrle
+    enc.encoding[3] = qToBigEndian((qint32)RFBProtol::Encodings::CopyRect);//copyrect
+    enc.encoding[4] = qToBigEndian((qint32)RFBProtol::Encodings::TRLE);
+    enc.encoding[5] = qToBigEndian((qint32)RFBProtol::Encodings::Hextile);//hextile
+    enc.encoding[6] = qToBigEndian((qint32)RFBProtol::Encodings::RRE);//rre
+    enc.encoding[7] = qToBigEndian((qint32)RFBProtol::Encodings::Raw);//raw
     if (socket.write((char *)&enc, 36) != 36)
     {
         qDebug("   fail to set encodings");
@@ -75,10 +63,8 @@ bool QVNCClientWidget::connectToVncServer(QString ip, QString password, int port
     if(isConnectedToServer())
         disconnectFromVncServer();
     socket.connectToHost(QHostAddress(ip), port);
-    if(socket.waitForConnected())
-    {
+    if(socket.waitForConnected()) {
         QByteArray response;
-
 //        qDebug() << "Security Handshake";
         socket.waitForReadyRead();
         response = socket.readAll();
@@ -87,11 +73,10 @@ bool QVNCClientWidget::connectToVncServer(QString ip, QString password, int port
             socket.disconnectFromHost();
             return false;
         }
-//        qDebug() << "Server Answer : " << response;
+        qDebug() << "Server Answer : " << response;
         char serverMinorVersion = response.at(10);
         response.clear();
-        switch (serverMinorVersion)
-        {
+        switch (serverMinorVersion) {
             case '3':  response.append("RFB 003.003\n");break;
             case '7':  response.append("RFB 003.007\n");break;
             case '8':  response.append("RFB 003.008\n");break;
@@ -101,23 +86,20 @@ bool QVNCClientWidget::connectToVncServer(QString ip, QString password, int port
         socket.waitForReadyRead();
         response = socket.read(1); // Number of security types
 
-        if(response.isEmpty())
-        {
+        if(response.isEmpty()) {
             qDebug() << "Number of security types empty!";
             socket.disconnectFromHost();
             return false;
         }
 
-        if(serverMinorVersion=='3')
-        {
+        if(serverMinorVersion=='3') {
             response = socket.read(4);
             int securityType = response.at(2);
             if(securityType==0){
                 qDebug() << "Connection failed";
                 return false;
             }
-            else if(securityType==2)
-            {
+            else if(securityType==2) {
                 goto Authentication;
             }
             else
@@ -147,8 +129,8 @@ Authentication:
                 socket.waitForReadyRead();
                 response = socket.read(4); // Security handshake result
                 qDebug() << "Security Handshake Result " << response.toInt();
-                if(response.toInt() == 0) // Connection successful
-                {
+                // Connection successful
+                if(response.toInt() == 0) {
 clientinit:
                     socket.write("\x01"); // ClientInit message (non-zeo: shared, zero:exclusive)
                     socket.waitForReadyRead();
@@ -184,8 +166,7 @@ clientinit:
                     qDebug() << "Name : " << response;
                     */
                 }
-                else
-                {
+                else {
                     qDebug() << "Connection failed! Wrong password?!?!?!";
                     return false;
                 }
@@ -248,7 +229,7 @@ void QVNCClientWidget::tryRefreshScreen()
 void QVNCClientWidget::sendFrameBufferUpdateRequest(int incremental)
 {
     QByteArray frameBufferUpdateRequest(10, 0);
-    frameBufferUpdateRequest[0] = 3; // message type must be 3
+    frameBufferUpdateRequest[0] = RFBProtol::FramebufferUpdateRequest; // message type must be 3
     frameBufferUpdateRequest[1] = incremental; // incremental mode is zero for now (can help optimize the VNC client)
     frameBufferUpdateRequest[2] = 0;// x position
     frameBufferUpdateRequest[3] = 0;// x position
@@ -307,7 +288,7 @@ void QVNCClientWidget::onServerMessage()
     disconnect(&socket, SIGNAL(readyRead()), this, SLOT(onServerMessage()));
 
     QByteArray response;
-    int noOfRects;
+    int numOfRects;
     response = socket.read(1);
     switch(response.at(0))
     {
@@ -315,29 +296,25 @@ void QVNCClientWidget::onServerMessage()
     // ***************************************************************************************
     // ***************************** Frame Buffer Update *************************************
     // ***************************************************************************************
-    case 0:
+    case RFBProtol::FramebufferUpdate:
 
         response = socket.read(1); // padding
         response = socket.read(2); // number of rectangles
 
-        noOfRects = qMakeU16(response.at(0), response.at(1));
+        numOfRects = qMakeU16(response.at(0), response.at(1));
 
-        for(int i=0; i<noOfRects; i++)
-        {
-
+        for(int i=0; i<numOfRects; i++) {
             qApp->processEvents();
             if(!isConnectedToServer())
                 return;
-            struct rfbRectHeader
-            {
+            struct rfbRectHeader {
                 quint16 xPosition;
                 quint16 yPosition;
                 quint16 width;
                 quint16 height;
                 qint32  encodingType;
             }rectHeader;
-            if(socket.read((char *)&rectHeader, sizeof(rectHeader)) != sizeof(rectHeader))
-            {
+            if(socket.read((char *)&rectHeader, sizeof(rectHeader)) != sizeof(rectHeader)) {
                 qDebug("read size error");
                 socket.readAll();
                 break;
@@ -347,43 +324,30 @@ void QVNCClientWidget::onServerMessage()
             rectHeader.width = qFromBigEndian(rectHeader.width);
             rectHeader.height = qFromBigEndian(rectHeader.height);
             rectHeader.encodingType = qFromBigEndian(rectHeader.encodingType);
-            int noOfBytes = rectHeader.width * rectHeader.height * (pixelFormat.bitsPerPixel / 8);
-
-            if(rectHeader.encodingType == 0 && rectHeader.width*rectHeader.height>0) {
-
-                QImage image(rectHeader.width, rectHeader.height, QImage::Format_RGB32);
-                while(socket.bytesAvailable() < noOfBytes){
+            if(rectHeader.encodingType == RFBProtol::Encodings::Raw) {
+                int numOfBytes = rectHeader.width * rectHeader.height * (pixelFormat.bitsPerPixel / 8);
+                if(numOfBytes<0)
+                    break;
+                while(socket.bytesAvailable() < numOfBytes){
                     qApp->processEvents();
                     if(!isConnectedToServer())
                         return;
                 }
-                QByteArray pixelsData = socket.read(noOfBytes);
-                uchar* img_pointer = image.bits();
-
-                int pixel_byte_cnt = 0;
-                for(int i=0; i<rectHeader.height; i++)
-                {
-                    qApp->processEvents();
-
-                    for(int j=0; j<rectHeader.width; j++)
-                    {
-                        // The order of the colors is BGR (not RGB)
-                        img_pointer[0] = pixelsData.at(pixel_byte_cnt);
-                        img_pointer[1] = pixelsData.at(pixel_byte_cnt+1);
-                        img_pointer[2] = pixelsData.at(pixel_byte_cnt+2);
-                        img_pointer[3] = pixelsData.at(pixel_byte_cnt+3);
-
-                        pixel_byte_cnt += 4;
-                        img_pointer += 4;
-                    }
-                }
+                QImage image(rectHeader.width, rectHeader.height, QImage::Format_ARGB32);
+                socket.read((char*)image.bits(), numOfBytes);
 
                 QPainter painter(&screen);
                 painter.drawImage(rectHeader.xPosition, rectHeader.yPosition, image);
                 painter.end();
             }
+            /*
+            else if(rectHeader.encodingType == RFBProtol::Encodings::CursorSizePseudo) {
+                int numOfBytes = rectHeader.width * rectHeader.height * (pixelFormat.bitsPerPixel / 8);
+                int floor = (rectHeader.width+7)/8*rectHeader.height;
+            }
+            */
             else{
-                socket.readAll();
+                qDebug() << "encoding Type:" << rectHeader.encodingType;
                 break;
             }
         }
@@ -392,10 +356,11 @@ void QVNCClientWidget::onServerMessage()
         emit frameBufferUpdated();
         break;
     default:
-        response = socket.readAll();
+        qDebug() << "server to client message type:" << (quint8)response.at(0);
         break;
     }
 
+    response = socket.readAll();
     connect(&socket, SIGNAL(readyRead()), this, SLOT(onServerMessage()));
 }
 
@@ -419,10 +384,8 @@ void QVNCClientWidget::keyPressEvent(QKeyEvent *event)
 {
     if(!isConnectedToServer())
         return;
-
     QByteArray message(8, 0);
-
-    message[0] = 4; // keyboard event
+    message[0] = RFBProtol::KeyEvent; // keyboard event
     message[1] = 1; // down = 1 (press)
     message[2] = message[3] = 0; // padding
 
@@ -440,10 +403,8 @@ void QVNCClientWidget::keyReleaseEvent(QKeyEvent *event)
 {
     if(!isConnectedToServer())
         return;
-
     QByteArray message(8, 0);
-
-    message[0] = 4; // keyboard event
+    message[0] = RFBProtol::KeyEvent; // keyboard event
     message[1] = 0; // down = 0 (release)
     message[2] = message[3] = 0; // padding
 
@@ -461,134 +422,85 @@ void QVNCClientWidget::mouseMoveEvent(QMouseEvent *event)
 {
     if(!isConnectedToServer())
         return;
+    int posX, posY;
+    quint8 btnMask;
+    btnMask = translateRfbPointer(event, posX, posY);
+    if(posX<0 || posY<0)
+        return;
 
     QByteArray message(6, 0);
-
-    message[0] = 5; // mouse event
-
-    switch(event->button())
-    {
-    case Qt::LeftButton:
-        message[1] = 1;
-        break;
-
-    case Qt::MiddleButton:
-        message[1] = 2;
-        break;
-
-    case Qt::RightButton:
-        message[1] = 4;
-        break;
-
-    default:
-        message[1] = 0;
-        break;
-
-    }
-
-    qint16 posX, posY;
-    if(isScaled){
-        posX = (double(event->pos().x()) / double(width())) * double(frameBufferWidth);
-        posY = (double(event->pos().y()) / double(height())) * double(frameBufferHeight);
-    }
-    else {
-        posX = event->pos().x() - paintTargetX;
-        posY = event->pos().y() - paintTargetY;
-        if(posX<0 || posY<0)
-            return;
-    }
-
+    message[0] = RFBProtol::PointerEvent; // mouse event
+    message[1] = m_btnStatus;		//bit:0-2 represent left,middle and right button (after 2 is wheel button, up down left right) 1:down 0:up
     message[2] = (posX >> 8) & 0xFF;
     message[3] = (posX >> 0) & 0xFF;
-
     message[4] = (posY >> 8) & 0xFF;
     message[5] = (posY >> 0) & 0xFF;
-
     socket.write(message);
+//    qDebug() << __FUNCTION__ <<  m_btnStatus;
 }
 
 void QVNCClientWidget::mousePressEvent(QMouseEvent *event)
 {
     setFocus();
-
     if(!isConnectedToServer())
+        return;
+    int posX, posY;
+    quint8 btnMask;
+    btnMask = translateRfbPointer(event, posX, posY);
+    m_btnStatus |= btnMask;
+    if(posX<0 || posY<0)
         return;
 
     QByteArray message(6, 0);
-
-    message[0] = 5; // mouse event
-
-    switch(event->button())
-    {
-    case Qt::LeftButton:
-        message[1] = 1;
-        break;
-
-    case Qt::MiddleButton:
-        message[1] = 2;
-        break;
-
-    case Qt::RightButton:
-        message[1] = 4;
-        break;
-
-    default:
-        message[1] = 0;
-        break;
-
-    }
-
-    qint16 posX, posY;
-    if(isScaled){
-        posX = (double(event->pos().x()) / double(width())) * double(frameBufferWidth);
-        posY = (double(event->pos().y()) / double(height())) * double(frameBufferHeight);
-    }
-    else {
-        posX = event->pos().x() - paintTargetX;
-        posY = event->pos().y() - paintTargetY;
-        if(posX<0 || posY<0)
-            return;
-    }
-
+    message[0] = RFBProtol::PointerEvent; // mouse event
+    message[1] = m_btnStatus;
     message[2] = (posX >> 8) & 0xFF;
     message[3] = (posX >> 0) & 0xFF;
-
     message[4] = (posY >> 8) & 0xFF;
     message[5] = (posY >> 0) & 0xFF;
-
     socket.write(message);
+//    qDebug() << __FUNCTION__ <<  m_btnStatus;
 }
 
 void QVNCClientWidget::mouseReleaseEvent(QMouseEvent *event)
 {
     if(!isConnectedToServer())
         return;
+    int posX, posY;
+    quint8 btnMask;
+    btnMask = translateRfbPointer(event, posX, posY);
+    m_btnStatus &= ~btnMask;
+    if(posX<0 || posY<0)
+        return;
 
     QByteArray message(6, 0);
+    message[0] = RFBProtol::PointerEvent; // mouse event
+    message[1] = m_btnStatus;
+    message[2] = (posX >> 8) & 0xFF;
+    message[3] = (posX >> 0) & 0xFF;
+    message[4] = (posY >> 8) & 0xFF;
+    message[5] = (posY >> 0) & 0xFF;
+    socket.write(message);
+//    qDebug() << __FUNCTION__ <<  m_btnStatus;
+}
 
-    message[0] = 5; // mouse event
-
-    switch(event->button())
-    {
+quint8 QVNCClientWidget::translateRfbPointer(QMouseEvent *event, int &posX, int &posY)
+{
+    quint8 buttonMask = 0;
+    switch(event->button()) {
     case Qt::LeftButton:
-        message[1] = 1;
+        buttonMask = 0x01;
         break;
-
     case Qt::MiddleButton:
-        message[1] = 2;
+        buttonMask = 0x02;
         break;
-
     case Qt::RightButton:
-        message[1] = 4;
+        buttonMask = 0x04;
         break;
-
     default:
-        message[1] = 0;
+        buttonMask = 0;
         break;
-
     }
-
-    qint16 posX, posY;
     if(isScaled){
         posX = (double(event->pos().x()) / double(width())) * double(frameBufferWidth);
         posY = (double(event->pos().y()) / double(height())) * double(frameBufferHeight);
@@ -596,18 +508,10 @@ void QVNCClientWidget::mouseReleaseEvent(QMouseEvent *event)
     else {
         posX = event->pos().x() - paintTargetX;
         posY = event->pos().y() - paintTargetY;
-        if(posX<0 || posY<0)
-            return;
+        if(posX>frameBufferWidth) posX=-1;
+        if(posY>frameBufferHeight) posY=-1;
     }
-
-    message[2] = (posX >> 8) & 0xFF;
-    message[3] = (posX >> 0) & 0xFF;
-
-    message[4] = (posY >> 8) & 0xFF;
-    message[5] = (posY >> 0) & 0xFF;
-
-    socket.write(message);
-
+    return buttonMask;
 }
 
 quint32 QVNCClientWidget::translateRfbKey(int key, bool modifier)

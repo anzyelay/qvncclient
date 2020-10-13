@@ -5,6 +5,50 @@
 #include <QtWidgets>
 #include <QtNetwork>
 
+namespace RFBProtol {
+    enum Client2ServerMessages{
+        SetPixelFormat				=	0,
+        SetEncodings				=	2,
+        FramebufferUpdateRequest	=	3,
+        KeyEvent					=	4,
+        PointerEvent				=	5,
+        ClientCutText				=	6
+    };
+    enum Server2ClientMessages{
+        FramebufferUpdate	=	0,
+        SetColourMapEntries	=	1,
+        Bell				=	2,
+        ServerCutText		=	3
+    };
+    enum Encodings{
+        Raw					=	0,
+        CopyRect			=	1,
+        RRE					=	2,
+        CoRRE				=	4,
+        Hextile				=	5,
+        Zlib				=	6,
+        Tight				=	7,
+        Zlibhex				=	8,
+        TRLE				=	15,
+        ZRLE				=	16,
+        DesktopSizePseudo	= -223,
+        CursorSizePseudo	= -239
+    };
+
+    struct PixelFormat {
+        quint8 bitsPerPixel;
+        quint8 depth;
+        quint8 bigEndianFlag;
+        quint8 trueColorFlag;
+        quint16 redMax;
+        quint16 greenMax;
+        quint16 blueMax;
+        quint8 redShift;
+        quint8 greenShift;
+        quint8 blueShift;
+        quint8 padding[3];
+    };
+}
 
 class QVNCClientWidget : public QWidget
 {
@@ -63,20 +107,7 @@ private:
     int frameBufferHeight;
     int paintTargetX,paintTargetY;
 
-    struct PixelFormat
-    {
-        quint8 bitsPerPixel;
-        quint8 depth;
-        quint8 bigEndianFlag;
-        quint8 trueColorFlag;
-        quint16 redMax;
-        quint16 greenMax;
-        quint16 blueMax;
-        quint8 redShift;
-        quint8 greenShift;
-        quint8 blueShift;
-        quint8 padding[3];
-    } pixelFormat;
+    RFBProtol::PixelFormat pixelFormat;
 
     quint16 qMakeU16(quint8 l, quint8 h)
     {
@@ -111,6 +142,8 @@ private:
     bool isScaled;
 
     quint32 translateRfbKey(int key, bool modifier);
+    quint8 translateRfbPointer(QMouseEvent *event, int &posX, int &posY);
+    quint8 m_btnStatus;
 
 };
 
