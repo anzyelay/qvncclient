@@ -61,6 +61,9 @@ MainWindow::MainWindow(QWidget *parent) :
         ui->statusBar->showMessage(tr("已连接到 %1 , 登录用户: %2").arg(ssh->host()).arg(ssh->user()));
         ssh->enter2shell();
     });
+    connect(ui->vncView,&QVNCClientWidget::connected,[&](bool b){
+        ui->btnRemoteCtrl->setText(b?"断开远程":"远程控制");
+    });
 
     ui->console->hide();
     ui->frame->hide();
@@ -117,7 +120,6 @@ void MainWindow::on_btnDisconnect_pressed()
     if(ui->vncView->isConnectedToServer()){
         ui->vncView->disconnectFromVncServer();
     }
-    ui->btnRemoteCtrl->setText("远程控制");
     usleep(100000);// give some time to make a perfect execution;
     ssh->disconnectFromHost();
     ui->statusBar->showMessage(tr("已下线"));
@@ -157,14 +159,11 @@ void MainWindow::on_btnRemoteCtrl_clicked()
     ui->btnRemoteCtrl->setEnabled(false);
     QString str = ui->btnRemoteCtrl->text();
     if(str == "断开远程"){
-        if(ui->vncView->isConnectedToServer())
-            ui->vncView->disconnectFromVncServer();
-        ui->btnRemoteCtrl->setText("远程控制");
+         ui->vncView->disconnectFromVncServer();
     }
     else{
         if(ui->vncView->connectToVncServer(cfg->value("hostip").toString(), "")) {
             ui->vncView->startFrameBufferUpdate();
-            ui->btnRemoteCtrl->setText("断开远程");
         }
     }
     ui->btnRemoteCtrl->setEnabled(true);

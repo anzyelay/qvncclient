@@ -58,25 +58,23 @@ public:
     ~QVNCClientWidget();
 
     bool connectToVncServer(QString ip, QString password, int port = 5900);
-    bool isConnectedToServer();
-    void disconnectFromVncServer();
+    inline bool isConnectedToServer() { return (socket.state() == QTcpSocket::ConnectedState); }
+    inline void disconnectFromVncServer() { socket.disconnectFromHost(); }
 
-    void tryRefreshScreen();
+    inline void tryRefreshScreen() { sendFrameBufferUpdateRequest(0); }
 
-    void startFrameBufferUpdate()
-    {
+    void startFrameBufferUpdate() {
         connect(this, SIGNAL(frameBufferUpdated()), this, SLOT(sendFrameBufferUpdateRequest()));
         tryRefreshScreen();
-//        sendFrameBufferUpdateRequest();
     }
 
-    void stopFrameBufferUpdate()
-    {
+    void stopFrameBufferUpdate() {
         disconnect(this, SIGNAL(frameBufferUpdated()), this, SLOT(sendFrameBufferUpdateRequest()));
     }
+    QString getServerMsg(void) {
+        return  socket.peerName();
+    }
 
-    bool sendSetEncodings(void);
-    bool sendSetPixelFormat(void);
 public slots:
     void sendFrameBufferUpdateRequest(int incremental=1);
     void setFullScreen(bool full);
@@ -90,22 +88,24 @@ protected:
     void mouseMoveEvent(QMouseEvent *event);
     void mousePressEvent(QMouseEvent *event);
     void mouseReleaseEvent(QMouseEvent *event);
+    void wheelEvent(QWheelEvent *event);
 
 private slots:
     void onServerMessage();
 
 signals:
     void frameBufferUpdated();
+    void connected(bool b);
 
 private:
     QImage screen;
-
     QTcpSocket socket;
     QByteArray desHash(QByteArray challenge, QString passStr);
 
     int frameBufferWidth;
     int frameBufferHeight;
     int paintTargetX,paintTargetY;
+    bool isScaled;
 
     RFBProtol::PixelFormat pixelFormat;
 
@@ -138,12 +138,10 @@ private:
         return result;
     }
 
-    bool isFrameBufferUpdating;
-    bool isScaled;
-
+    bool sendSetEncodings(void);
+    bool sendSetPixelFormat(void);
     quint32 translateRfbKey(int key, bool modifier);
-    quint8 translateRfbPointer(QMouseEvent *event, int &posX, int &posY);
-    quint8 m_btnStatus;
+    quint8 translateRfbPointer(int mouseStatus, int &posX, int &posY);
 
 };
 

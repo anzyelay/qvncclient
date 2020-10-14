@@ -1,11 +1,27 @@
 #include "qvncclientwidget.h"
 
 QVNCClientWidget::QVNCClientWidget(QWidget *parent) : QWidget(parent)
-  ,isFrameBufferUpdating(true)
   ,isScaled(true)
-  ,m_btnStatus(0)
 {
     setMouseTracking(true);
+    connect(&socket, &QTcpSocket::stateChanged, [&](QAbstractSocket::SocketState state){
+        switch (state) {
+        case QAbstractSocket::UnconnectedState:
+            disconnect(&socket, SIGNAL(readyRead()), this, SLOT(onServerMessage()));
+            screen.fill(Qt::red);
+            update();
+            emit connected(false);
+            break;
+        default:
+            break;
+        }
+//        qDebug() << state;
+    });
+}
+
+QVNCClientWidget::~QVNCClientWidget()
+{
+    disconnectFromVncServer();
 }
 
 bool QVNCClientWidget::sendSetPixelFormat()
@@ -190,12 +206,8 @@ clientinit:
     sendSetPixelFormat();
     sendSetEncodings();
     connect(&socket, SIGNAL(readyRead()), this, SLOT(onServerMessage()));
+    emit connected(true);
     return true;
-}
-
-QVNCClientWidget::~QVNCClientWidget()
-{
-    disconnectFromVncServer();
 }
 
 QByteArray QVNCClientWidget::desHash(QByteArray challenge, QString passStr)
@@ -219,11 +231,6 @@ QByteArray QVNCClientWidget::desHash(QByteArray challenge, QString passStr)
         (unsigned char*)result.data()+8);
 
     return result;
-}
-
-void QVNCClientWidget::tryRefreshScreen()
-{
-    sendFrameBufferUpdateRequest(0);
 }
 
 void QVNCClientWidget::sendFrameBufferUpdateRequest(int incremental)
@@ -251,7 +258,7 @@ void QVNCClientWidget::setFullScreen(bool full)
 void QVNCClientWidget::resizeEvent(QResizeEvent *e)
 {
     if(isScaled){
-        paintTargetX = 0; paintTargetY = 0;
+        paintTargetX = paintTargetY = 0;
     }
     else{
         qint32 x=0,y=0;
@@ -267,8 +274,7 @@ void QVNCClientWidget::resizeEvent(QResizeEvent *e)
 
 void QVNCClientWidget::paintEvent(QPaintEvent *event)
 {
-    if(screen.isNull())
-    {
+    if(screen.isNull()) {
         screen = QImage(width(), height(), QImage::Format_RGB32);
         screen.fill(Qt::red);
     }
@@ -290,8 +296,7 @@ void QVNCClientWidget::onServerMessage()
     QByteArray response;
     int numOfRects;
     response = socket.read(1);
-    switch(response.at(0))
-    {
+    switch(response.at(0)) {
 
     // ***************************************************************************************
     // ***************************** Frame Buffer Update *************************************
@@ -316,7 +321,7 @@ void QVNCClientWidget::onServerMessage()
             }rectHeader;
             if(socket.read((char *)&rectHeader, sizeof(rectHeader)) != sizeof(rectHeader)) {
                 qDebug("read size error");
-                socket.readAll();
+                response = socket.readAll();
                 break;
             }
             rectHeader.xPosition = qFromBigEndian(rectHeader.xPosition);
@@ -326,7 +331,7 @@ void QVNCClientWidget::onServerMessage()
             rectHeader.encodingType = qFromBigEndian(rectHeader.encodingType);
             if(rectHeader.encodingType == RFBProtol::Encodings::Raw) {
                 int numOfBytes = rectHeader.width * rectHeader.height * (pixelFormat.bitsPerPixel / 8);
-                if(numOfBytes<0)
+                if(numOfBytes<=0)
                     break;
                 while(socket.bytesAvailable() < numOfBytes){
                     qApp->processEvents();
@@ -340,14 +345,19 @@ void QVNCClientWidget::onServerMessage()
                 painter.drawImage(rectHeader.xPosition, rectHeader.yPosition, image);
                 painter.end();
             }
-            /*
             else if(rectHeader.encodingType == RFBProtol::Encodings::CursorSizePseudo) {
                 int numOfBytes = rectHeader.width * rectHeader.height * (pixelFormat.bitsPerPixel / 8);
                 int floor = (rectHeader.width+7)/8*rectHeader.height;
+                while(socket.bytesAvailable() < numOfBytes+floor){
+                    qApp->processEvents();
+                    if(!isConnectedToServer())
+                        return;
+                }
+                socket.read(numOfBytes+floor);
             }
-            */
             else{
                 qDebug() << "encoding Type:" << rectHeader.encodingType;
+                response = socket.readAll();
                 break;
             }
         }
@@ -357,27 +367,11 @@ void QVNCClientWidget::onServerMessage()
         break;
     default:
         qDebug() << "server to client message type:" << (quint8)response.at(0);
+        response = socket.readAll();
         break;
     }
 
-    response = socket.readAll();
     connect(&socket, SIGNAL(readyRead()), this, SLOT(onServerMessage()));
-}
-
-bool QVNCClientWidget::isConnectedToServer()
-{
-    if(socket.state() == QTcpSocket::ConnectedState)
-        return true;
-    else
-        return false;
-}
-
-void QVNCClientWidget::disconnectFromVncServer()
-{
-    disconnect(&socket, SIGNAL(readyRead()), this, SLOT(onServerMessage()));
-    socket.disconnectFromHost();
-    screen.fill(Qt::red);
-    update();
 }
 
 void QVNCClientWidget::keyPressEvent(QKeyEvent *event)
@@ -397,6 +391,7 @@ void QVNCClientWidget::keyPressEvent(QKeyEvent *event)
     message[7] = (key >> 0) & 0xFF;
 
     socket.write(message);
+    event->accept();
 }
 
 void QVNCClientWidget::keyReleaseEvent(QKeyEvent *event)
@@ -416,26 +411,28 @@ void QVNCClientWidget::keyReleaseEvent(QKeyEvent *event)
     message[7] = (key >> 0) & 0xFF;
 
     socket.write(message);    
+    event->accept();
 }
 
 void QVNCClientWidget::mouseMoveEvent(QMouseEvent *event)
 {
     if(!isConnectedToServer())
         return;
-    int posX, posY;
-    quint8 btnMask;
-    btnMask = translateRfbPointer(event, posX, posY);
+    int posX = event->x();
+    int posY = event->y();
+    quint8  btnMask = translateRfbPointer(event->buttons(), posX, posY);
     if(posX<0 || posY<0)
         return;
 
     QByteArray message(6, 0);
     message[0] = RFBProtol::PointerEvent; // mouse event
-    message[1] = m_btnStatus;		//bit:0-2 represent left,middle and right button (after 2 is wheel button, up down left right) 1:down 0:up
+    message[1] = btnMask;
     message[2] = (posX >> 8) & 0xFF;
     message[3] = (posX >> 0) & 0xFF;
     message[4] = (posY >> 8) & 0xFF;
     message[5] = (posY >> 0) & 0xFF;
     socket.write(message);
+    event->accept();
 //    qDebug() << __FUNCTION__ <<  m_btnStatus;
 }
 
@@ -444,21 +441,21 @@ void QVNCClientWidget::mousePressEvent(QMouseEvent *event)
     setFocus();
     if(!isConnectedToServer())
         return;
-    int posX, posY;
-    quint8 btnMask;
-    btnMask = translateRfbPointer(event, posX, posY);
-    m_btnStatus |= btnMask;
+    int posX = event->x();
+    int posY = event->y();
+    quint8 btnMask = translateRfbPointer(event->buttons(), posX, posY);
     if(posX<0 || posY<0)
         return;
 
     QByteArray message(6, 0);
     message[0] = RFBProtol::PointerEvent; // mouse event
-    message[1] = m_btnStatus;
+    message[1] = btnMask;
     message[2] = (posX >> 8) & 0xFF;
     message[3] = (posX >> 0) & 0xFF;
     message[4] = (posY >> 8) & 0xFF;
     message[5] = (posY >> 0) & 0xFF;
     socket.write(message);
+    event->accept();
 //    qDebug() << __FUNCTION__ <<  m_btnStatus;
 }
 
@@ -466,48 +463,67 @@ void QVNCClientWidget::mouseReleaseEvent(QMouseEvent *event)
 {
     if(!isConnectedToServer())
         return;
-    int posX, posY;
-    quint8 btnMask;
-    btnMask = translateRfbPointer(event, posX, posY);
-    m_btnStatus &= ~btnMask;
+    int posX = event->x();
+    int posY = event->y();
+    quint8 btnMask = translateRfbPointer(event->buttons(), posX, posY);
     if(posX<0 || posY<0)
         return;
 
     QByteArray message(6, 0);
     message[0] = RFBProtol::PointerEvent; // mouse event
-    message[1] = m_btnStatus;
+    message[1] = btnMask;
     message[2] = (posX >> 8) & 0xFF;
     message[3] = (posX >> 0) & 0xFF;
     message[4] = (posY >> 8) & 0xFF;
     message[5] = (posY >> 0) & 0xFF;
     socket.write(message);
+    event->accept();
 //    qDebug() << __FUNCTION__ <<  m_btnStatus;
 }
 
-quint8 QVNCClientWidget::translateRfbPointer(QMouseEvent *event, int &posX, int &posY)
+void QVNCClientWidget::wheelEvent(QWheelEvent *event)
 {
-    quint8 buttonMask = 0;
-    switch(event->button()) {
-    case Qt::LeftButton:
-        buttonMask = 0x01;
-        break;
-    case Qt::MiddleButton:
-        buttonMask = 0x02;
-        break;
-    case Qt::RightButton:
-        buttonMask = 0x04;
-        break;
-    default:
-        buttonMask = 0;
-        break;
+    if(!isConnectedToServer())
+        return;
+    int posX = event->x();
+    int posY = event->y();
+    quint8 btnMask = translateRfbPointer(event->buttons(), posX, posY);
+    if(posX<0 || posY<0)
+        return;
+    quint8 bitmask = 0;
+    if(event->angleDelta().ry()>0)
+        bitmask = 1<<3;
+    else {
+        bitmask = 1<<4;
     }
+
+    QByteArray message(6, 0);
+    message[0] = RFBProtol::PointerEvent; // mouse event
+    message[1] = btnMask | bitmask ;
+    message[2] = (posX >> 8) & 0xFF;
+    message[3] = (posX >> 0) & 0xFF;
+    message[4] = (posY >> 8) & 0xFF;
+    message[5] = (posY >> 0) & 0xFF;
+    socket.write(message);
+    message[1] = btnMask & (~bitmask);
+    QThread::msleep(10);
+    socket.write(message);
+    event->accept();
+}
+
+quint8 QVNCClientWidget::translateRfbPointer(int mouseStatus, int &posX, int &posY)
+{
+    quint8 buttonMask = 0;//bit:0-2 represent left,middle and right button (after 2 is wheel button, up down left right) 1:down 0:up
+    if(mouseStatus&Qt::LeftButton)	buttonMask |= 0x01;
+    if(mouseStatus&Qt::MidButton)	buttonMask |= 0x02;
+    if(mouseStatus&Qt::RightButton)	buttonMask |= 0x04;
     if(isScaled){
-        posX = (double(event->pos().x()) / double(width())) * double(frameBufferWidth);
-        posY = (double(event->pos().y()) / double(height())) * double(frameBufferHeight);
+        posX = (double(posX) / double(width())) * double(frameBufferWidth);
+        posY = (double(posY) / double(height())) * double(frameBufferHeight);
     }
     else {
-        posX = event->pos().x() - paintTargetX;
-        posY = event->pos().y() - paintTargetY;
+        posX -= paintTargetX;
+        posY -= paintTargetY;
         if(posX>frameBufferWidth) posX=-1;
         if(posY>frameBufferHeight) posY=-1;
     }
