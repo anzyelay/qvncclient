@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>621</width>
-    <height>471</height>
+    <width>751</width>
+    <height>430</height>
    </rect>
   </property>
   <property name="font">
@@ -22,6 +22,7 @@
    <string notr="true">QPushButton:hover{
 	background-color: rgb(78, 154, 6);
 }
+
   QToolButton { /* all types of tool button */
       border: 2px solid #8f8f91;
       border-radius: 6px;
@@ -81,7 +82,20 @@ background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
          </sizepolicy>
         </property>
         <layout class="QGridLayout" name="gridLayout_4">
-         <item row="0" column="2" rowspan="3">
+         <item row="0" column="0" rowspan="2" colspan="2">
+          <spacer name="horizontalSpacer_2">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item row="0" column="2">
           <widget class="QFrame" name="frame">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -108,61 +122,6 @@ background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
             <property name="bottomMargin">
              <number>0</number>
             </property>
-            <item row="6" column="1">
-             <widget class="QPushButton" name="btnUpload">
-              <property name="text">
-               <string>上传</string>
-              </property>
-             </widget>
-            </item>
-            <item row="3" column="1">
-             <widget class="QPushButton" name="btnDisconnect">
-              <property name="text">
-               <string>下线(&amp;D)</string>
-              </property>
-              <property name="autoDefault">
-               <bool>true</bool>
-              </property>
-              <property name="default">
-               <bool>false</bool>
-              </property>
-              <property name="flat">
-               <bool>false</bool>
-              </property>
-             </widget>
-            </item>
-            <item row="4" column="1">
-             <widget class="QPushButton" name="btnSettings">
-              <property name="text">
-               <string>设置(&amp;S)</string>
-              </property>
-              <property name="autoDefault">
-               <bool>true</bool>
-              </property>
-              <property name="default">
-               <bool>false</bool>
-              </property>
-              <property name="flat">
-               <bool>false</bool>
-              </property>
-             </widget>
-            </item>
-            <item row="5" column="1">
-             <widget class="QPushButton" name="btnShowStyle">
-              <property name="text">
-               <string>FULL</string>
-              </property>
-              <property name="autoDefault">
-               <bool>true</bool>
-              </property>
-              <property name="default">
-               <bool>false</bool>
-              </property>
-              <property name="flat">
-               <bool>false</bool>
-              </property>
-             </widget>
-            </item>
             <item row="2" column="1">
              <widget class="QPushButton" name="btnRemoteCtrl">
               <property name="text">
@@ -195,6 +154,38 @@ background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
               </property>
              </widget>
             </item>
+            <item row="4" column="1">
+             <widget class="QPushButton" name="btnSettings">
+              <property name="text">
+               <string>设置(&amp;S)</string>
+              </property>
+              <property name="autoDefault">
+               <bool>true</bool>
+              </property>
+              <property name="default">
+               <bool>false</bool>
+              </property>
+              <property name="flat">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="1">
+             <widget class="QPushButton" name="btnDisconnect">
+              <property name="text">
+               <string>下线(&amp;D)</string>
+              </property>
+              <property name="autoDefault">
+               <bool>true</bool>
+              </property>
+              <property name="default">
+               <bool>false</bool>
+              </property>
+              <property name="flat">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
             <item row="0" column="1">
              <spacer name="verticalSpacer">
               <property name="orientation">
@@ -208,40 +199,31 @@ background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
               </property>
              </spacer>
             </item>
+            <item row="6" column="1">
+             <widget class="QPushButton" name="btnUpload">
+              <property name="text">
+               <string>上传</string>
+              </property>
+             </widget>
+            </item>
+            <item row="5" column="1">
+             <widget class="QPushButton" name="btnShowStyle">
+              <property name="text">
+               <string>FULL</string>
+              </property>
+              <property name="autoDefault">
+               <bool>true</bool>
+              </property>
+              <property name="default">
+               <bool>false</bool>
+              </property>
+              <property name="flat">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
            </layout>
           </widget>
-         </item>
-         <item row="2" column="0">
-          <widget class="QAnnConsole" name="console">
-           <property name="font">
-            <font>
-             <family>文泉驿等宽微米黑</family>
-             <weight>50</weight>
-             <bold>false</bold>
-            </font>
-           </property>
-           <property name="styleSheet">
-            <string notr="true">background-color: rgba(85, 87, 83,200);
-color: rgb(255, 255, 255);
-</string>
-           </property>
-           <property name="frameShape">
-            <enum>QFrame::NoFrame</enum>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="0">
-          <spacer name="horizontalSpacer_2">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>40</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
          </item>
         </layout>
        </widget>
@@ -249,7 +231,7 @@ color: rgb(255, 255, 255);
      </layout>
     </item>
     <item row="1" column="0">
-     <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="1,1,0,1">
+     <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="1,1,0,0">
       <item>
        <widget class="QToolButton" name="toolBtnCmd">
         <property name="maximumSize">
@@ -366,7 +348,7 @@ color: rgb(255, 255, 255);
          <string>...</string>
         </property>
         <property name="arrowType">
-         <enum>Qt::UpArrow</enum>
+         <enum>Qt::RightArrow</enum>
         </property>
        </widget>
       </item>
@@ -375,6 +357,43 @@ color: rgb(255, 255, 255);
    </layout>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
+  <widget class="QDockWidget" name="dockWidget">
+   <property name="features">
+    <set>QDockWidget::DockWidgetFloatable|QDockWidget::DockWidgetMovable</set>
+   </property>
+   <property name="allowedAreas">
+    <set>Qt::AllDockWidgetAreas</set>
+   </property>
+   <property name="windowTitle">
+    <string>ssh</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>1</number>
+   </attribute>
+   <widget class="QWidget" name="dockWidgetContents">
+    <layout class="QGridLayout" name="gridLayout_5">
+     <item row="0" column="0">
+      <widget class="QAnnConsole" name="console">
+       <property name="font">
+        <font>
+         <family>文泉驿等宽微米黑</family>
+         <weight>50</weight>
+         <bold>false</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">background-color: rgb(85, 87, 83);
+color: rgb(255, 255, 255);
+</string>
+       </property>
+       <property name="frameShape">
+        <enum>QFrame::NoFrame</enum>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </widget>
+  </widget>
  </widget>
  <layoutdefault spacing="6" margin="11"/>
  <customwidgets>

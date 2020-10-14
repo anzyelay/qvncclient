@@ -59,13 +59,17 @@ MainWindow::MainWindow(QWidget *parent) :
     });
     connect(ssh,&QSshSocket::loginSuccessful,this,[=](){
         ui->statusBar->showMessage(tr("已连接到 %1 , 登录用户: %2").arg(ssh->host()).arg(ssh->user()));
+        ui->dockWidget->setWindowTitle(tr("已连接到 %1 , 登录用户: %2").arg(ssh->host()).arg(ssh->user()));
         ssh->enter2shell();
     });
     connect(ui->vncView,&QVNCClientWidget::connected,[&](bool b){
         ui->btnRemoteCtrl->setText(b?"断开远程":"远程控制");
+        if(b){
+            setWindowTitle(ui->vncView->getServerMsg());
+        }
     });
 
-    ui->console->hide();
+    ui->dockWidget->hide();
     ui->frame->hide();
     ui->frameCmd->hide();
     QStringList strs = cfg->value("cmdhistory","ls").toStringList();
@@ -146,7 +150,7 @@ void MainWindow::on_toolBtnCmd_pressed()
 {
     bool show = ui->editCmd->isVisible();
     ui->frameCmd->setHidden(show);
-    ui->console->setHidden(show);
+    ui->dockWidget->setHidden(show);
 }
 
 void MainWindow::on_toolBtnSet_pressed()
